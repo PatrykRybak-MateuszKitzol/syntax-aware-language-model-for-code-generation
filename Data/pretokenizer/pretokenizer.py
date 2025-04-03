@@ -69,8 +69,6 @@ class Pretokenizer(NodeVisitor):
     @contextmanager
     def block(self, *, extra = None):
         self.write(_Tags.BLOCK)
-        if self._use_dedent:
-            self.write(_Tags.NEW_LINE)
         if extra:
             self.write(extra)
         self._indent += 1
