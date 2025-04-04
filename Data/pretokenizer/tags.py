@@ -1,7 +1,3 @@
-# BRAKUJE
-# - dekoratorów
-# - pythonowego typowania
-
 class _Tags:
     QUOTATION_1= "[QUOT_1]"
     QUOTATION_2= "[QUOT_2]"
@@ -177,11 +173,11 @@ tag_to_symbol = {
     _Tags.ASYNC_WITH: "async with ",
 
     _Tags.TRY: "try",
-    _Tags.EXCEPT: "except",
-    _Tags.EXCEPT_STAR: "except *",
+    _Tags.EXCEPT: "except ",
+    _Tags.EXCEPT_STAR: "except* ",
     _Tags.FINALLY: "finally",
 
-    _Tags.RAISE: "raise",
+    _Tags.RAISE: "raise ",
 
     _Tags.ASSERT: "assert ",
 
@@ -196,31 +192,31 @@ tag_to_symbol = {
     _Tags.YIELD: "yield ",
     _Tags.YIELD_FROM: "yield from ",
 
-    _Tags.FROM: "from ",
+    _Tags.FROM: " from ",
     _Tags.AS: " as ",
 
     _Tags.BLOCK: ":",
 
     _Tags.ASSIGN: " = ",
-    _Tags.NAMED_EXPR: ":=",
+    _Tags.NAMED_EXPR: " := ",
 
     _Tags.AWAIT: "await ",
 
     _Tags.JOINEDSTR: "f",
     _Tags.U: "u",
 
-    _Tags.ADD: "+",
-    _Tags.SUB: "-",
-    _Tags.MULT: "*",
-    _Tags.MATMULT: "@",
-    _Tags.DIV: "/",
-    _Tags.MOD: "%",
-    _Tags.LSHIFT: "<<",
-    _Tags.RSHIFT: ">>",
-    _Tags.BITOR: "|",
-    _Tags.BITAND: "&",
-    _Tags.BITXOR: "^",
-    _Tags.FLOORDIV: "//",
+    _Tags.ADD: " + ",
+    _Tags.SUB: " - ",
+    _Tags.MULT: " * ",
+    _Tags.MATMULT: " @ ",
+    _Tags.DIV: " / ",
+    _Tags.MOD: " % ",
+    _Tags.LSHIFT: " << ",
+    _Tags.RSHIFT: " >> ",
+    _Tags.BITOR: " | ",
+    _Tags.BITAND: " & ",
+    _Tags.BITXOR: " ^ ",
+    _Tags.FLOORDIV: " // ",
     _Tags.POW: "**",
 
     _Tags.EQ: " == ",
@@ -268,7 +264,7 @@ tag_to_symbol = {
     _Tags.POW_ASSIGN: " **= ",
 
     _Tags.DICT_COLON: ": ",
-    _Tags.UNPACK: "*",
+    _Tags.UNPACK: "**",
 
     _Tags.ASYNC_FOR_COMP: " async for ",
     _Tags.FOR_COMP: " for ",
@@ -300,7 +296,7 @@ tag_to_symbol = {
     _Tags.KWARGS: "**",
 
     _Tags.LAMBDA: "lambda ",
-    _Tags.LAMBDA_BODDY: ":",
+    _Tags.LAMBDA_BODDY: ": ",
 
     _Tags.AS_ITEM: " as ",
 
