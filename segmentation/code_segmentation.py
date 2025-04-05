@@ -1,4 +1,3 @@
-from collections import deque
 from typing import List, Tuple, Optional
 import sys
 import os
@@ -6,13 +5,10 @@ import ast
 import json
 import re
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-PRETOKENIZER_DIR = os.path.join(ROOT_DIR, 'Data', 'pretokenizer')
-sys.path.append(PRETOKENIZER_DIR)
-
-# Now import your module
-from pretokenizer import pretokenize  # or: from pretokenizer import SomeFunction
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from Data.pretokenizer.pretokenizer import pretokenize
 from pretty_printer import pretty_print_span, pretty_print_spans, pretty_print_tokens
+
 
 def segment_tokens(tokens: List[str], max_len: int, protected_spans: List[Tuple[int, int]]):
     """
@@ -130,31 +126,37 @@ def extract_delimited_spans(tokens: List[str], left_tag: str, right_tag: str) ->
 def extract_protected_spans(
     tokens: List[str],
     tags: Optional[List[str]] = None,
-    control_tags: bool = True,
-    inline_tags: bool = True,
-    delimiters: bool = True
+    control_tags: bool = False,
+    inline_tags: bool = False,
+    delimiters: bool = False,
+    lines: bool = False,
+    intended_blocks: bool = False,
+    all: bool = False
 ) -> List[Tuple[int, int]]:
     """
     Extract spans of interest from a sequence of tokens based on specific language constructs.
 
     Args:
         tokens (List[str]): The tokenized input sequence.
-        tags (Optional[List[str]]): A list of tags to extract spans for, used when the corresponding flag is False.
-        control_tags (bool): If True, extract spans for all known control-structure keywords (e.g., [IF], [FOR], [DEF]).
-                             If False, only extract control spans for tags explicitly listed in `tags`.
-        inline_tags (bool): If True, extract single-line spans for all known inline keywords (e.g., [RETURN], [RAISE]).
-                            If False, only extract inline spans for tags explicitly listed in `tags`.
-        delimiters (bool): If True, extract spans enclosed by all known delimiter pairs (e.g., (), [], {}).
-                           If False, only extract delimited spans if at least one side of the pair is listed in `tags`.
+        tags (Optional[List[str]]): A list of tags to extract spans for, used when corresponding flags are False.
+        control_tags (bool): If True, extract spans for known control-structure keywords.
+        inline_tags (bool): If True, extract single-line spans for known inline keywords.
+        delimiters (bool): If True, extract spans enclosed by known delimiter pairs.
+        lines (bool): If True, extract line-based spans from [NEW_LINE] markers.
+        intended_blocks (bool): If True, extract indented code blocks delimited by [INDENT] and [DEDENT].
+        all (bool): If True, enables all other flags (control_tags, inline_tags, delimiters, lines, intended_blocks).
 
     Returns:
-        List[Tuple[int, int]]: A list of spans, where each span is a tuple of (start_index, end_index).
+        List[Tuple[int, int]]: A list of unique spans, where each span is a tuple of (start_index, end_index).
     """
     spans = []
     stack = []
     tags = tags or []
 
-    if "[NEW_LINE]" in tags:
+    if all:
+        control_tags = inline_tags = delimiters = lines = intended_blocks = True
+
+    if lines or "[NEW_LINE]" in tags:
         last_newline = -1
         for i, token in enumerate(tokens):
             if token == "[NEW_LINE]":
@@ -164,7 +166,7 @@ def extract_protected_spans(
         if last_newline < len(tokens) - 1:
             spans.append((last_newline, len(tokens) - 1))
 
-    if "[INDENT]" in tags:
+    if intended_blocks or "[INDENT]" in tags:
         for i, token in enumerate(tokens):
             if token == "[INDENT]":
                 stack.append(i)
@@ -219,7 +221,7 @@ def extract_protected_spans(
             if left in tags or right in tags:
                 spans.extend(extract_delimited_spans(tokens, left, right))
 
-    spans.sort()
+    spans = sorted(set(spans))
     return spans
 
 
@@ -240,8 +242,12 @@ if __name__ == "__main__":
         new_tokens = tokenize_pretokenized_string(parsed)
         examples.append(new_tokens)
 
-    new_spans = extract_protected_spans(examples[0], delimiters=True)
+
+    print(codes[0])
+    # print(examples[0])
+
+    new_spans = extract_protected_spans(examples[0], intended_blocks=True)
     print(pretty_print_tokens(examples[0]))
-    print(new_spans)
+    # print(new_spans)
     # print(segment_tokens(examples[0], 60, new_spans))
     pretty_print_spans(examples[0], new_spans)
