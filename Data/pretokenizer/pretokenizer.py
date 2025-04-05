@@ -43,13 +43,14 @@ class Pretokenizer(NodeVisitor):
 
     def maybe_newline(self):
         if self._source:
-            self.write(_Tags.NEW_LINE)
+            if not (self._source[-1] == _Tags.INDENT or self._source[-1] == _Tags.DEDENT):
+                self.write(_Tags.NEW_LINE)
 
     def fill(self, text=""):
+        self.maybe_newline()
         if self._use_dedent:
             self.write(text)
         else:
-            self.maybe_newline()
             self.write(_Tags.INDENT * self._indent + text)
             
 
