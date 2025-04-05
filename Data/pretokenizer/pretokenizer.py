@@ -4,7 +4,7 @@ import sys
 from ast import _Precedence, _MULTI_QUOTES, _ALL_QUOTES, NodeVisitor, AsyncFunctionDef, FunctionDef, ClassDef, Module, Expr, Name, JoinedStr, Constant, FormattedValue, Tuple, If
 from contextlib import contextmanager, nullcontext
 
-from tags import _Tags
+from .tags import _Tags
 
 
 class Pretokenizer(NodeVisitor):
