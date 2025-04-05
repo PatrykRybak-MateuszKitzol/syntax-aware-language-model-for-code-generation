@@ -1,6 +1,6 @@
 def pretty_print_span(tokens, span):
     start, end = span
-    span_tokens = tokens[start:end]
+    span_tokens = tokens[start:(end+1)]
     print(f"\n=== Span {span} ===")
     pretty_print_tokens(span_tokens)
 
