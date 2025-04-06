@@ -1,17 +1,13 @@
-from collections import deque
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import sys
 import os
 import ast
 import json
 import re
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-PRETOKENIZER_DIR = os.path.join(ROOT_DIR, 'Data', 'pretokenizer')
-sys.path.append(PRETOKENIZER_DIR)
-
-# Now import your module
-from pretokenizer import pretokenize  # or: from pretokenizer import SomeFunction
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from Data.pretokenizer.pretokenizer import pretokenize
+from pretty_printer import pretty_print_span, pretty_print_spans, pretty_print_tokens
 
 
 def segment_tokens(tokens: List[str], max_len: int, protected_spans: List[Tuple[int, int]]):
@@ -45,7 +41,7 @@ def segment_tokens(tokens: List[str], max_len: int, protected_spans: List[Tuple[
         for i in range(1, n + 1):
             for j in range(max(0, i - max_len), i):
                 new_cost = dp[k - 1][j] + cost[i - 1]
-                #print(k, i, j, new_cost)
+                # print(k, i, j, new_cost)
                 if new_cost < dp[k][i]:
                     dp[k][i] = new_cost
                     prev[k][i] = j
@@ -71,83 +67,173 @@ def segment_tokens(tokens: List[str], max_len: int, protected_spans: List[Tuple[
     return segments
 
 
-def extract_protected_spans(tokens: List[str]) -> List[Tuple[int, int]]:
-    spans = []
-    stack = []
-
-    # Line-based spans (from one [NEW_LINE] to the next)
-    last_newline = -1
-    for i, token in enumerate(tokens):
-        if token == "[NEW_LINE]":
-            if 0 <= last_newline < i - 1:
-                spans.append((last_newline, i - 1))
-            last_newline = i
-    if last_newline < len(tokens) - 1:
-        spans.append((last_newline, len(tokens) - 1))
-
-    # Indentation-based spans
-    for i, token in enumerate(tokens):
-        if token == "[INDENT]":
-            stack.append(i)
-        elif token == "[DEDENT]":
-            if stack:
-                start = stack.pop()
-                spans.append((start, i + 1))  # include the [DEDENT] token
-
-    spans.sort()
-    return spans
-
-
 def tokenize_pretokenized_string(s):
     # Tokenizes strings like [DEF]train[DELIMIT_1_L]... into separate tokens
     return re.findall(r'\[[^\[\]]+\]|[^\[\]]+', s)
 
-def pretty_print_span(tokens, span):
-    start, end = span
-    span_tokens = tokens[start:end]
-    print(f"\n=== Span {span} ===")
-    pretty_print_tokens(span_tokens)
 
-def pretty_print_spans(tokens, spans):
-    for span in spans:
-        if span[0] == -1:
-            span = (0, span[1])  # assume -1 means start from beginning
-        pretty_print_span(tokens, span)
-
-def pretty_print_tokens(tokens):
-    indent_level = 0
-    indent_str = "    "  # 4 spaces
-    output = []
-    current_line = ""
-
-    def flush_line():
-        nonlocal current_line
-        if current_line.strip():  # don't add empty lines
-            output.append(indent_str * indent_level + current_line.strip())
-        current_line = ""
-
-    for token in tokens:
-        if token == "[NEW_LINE]":
-            flush_line()
-            output.append(indent_str * indent_level + "[NEW_LINE]")
-        elif token == "[INDENT]":
-            flush_line()
-            output.append(indent_str * indent_level + "[INDENT]")
-            indent_level += 1
-        elif token == "[DEDENT]":
-            flush_line()
-            indent_level = max(indent_level - 1, 0)
-            output.append(indent_str * indent_level + "[DEDENT]")
-        elif token == "[BLOCK]" or token == "[RETURN]":
-            current_line += " " + token if current_line else token
-            flush_line()
+def extract_control_structure_span(tokens: List[str], control_tag: str) -> List[Tuple[int, int]]:
+    spans = []
+    i = 0
+    while i < len(tokens):
+        if tokens[i] == control_tag:
+            header_start = i
+            while i < len(tokens) and tokens[i] != "[INDENT]":
+                i += 1
+            if i < len(tokens) and tokens[i] == "[INDENT]":
+                depth = 1
+                block_start = i + 1
+                i += 1
+                while i < len(tokens) and depth > 0:
+                    if tokens[i] == "[INDENT]":
+                        depth += 1
+                    elif tokens[i] == "[DEDENT]":
+                        depth -= 1
+                    i += 1
+                spans.append((header_start, i - 1))
         else:
-            current_line += " " + token if current_line else token
+            i += 1
+    return spans
 
-    flush_line()  # Final flush
 
-    print("\n".join(output))
+def extract_single_line_span(tokens: List[str], keyword_tag: str) -> List[Tuple[int, int]]:
+    spans = []
+    i = 0
+    while i < len(tokens):
+        if tokens[i] == keyword_tag:
+            start = i
+            end = i + 1
+            while end < len(tokens) and tokens[end] not in ("[NEW_LINE]", "[INDENT]", "[DEDENT]"):
+                end += 1
+            spans.append((start, end - 1 if end < len(tokens) and tokens[end] in ("[NEW_LINE]", "[INDENT]", "[DEDENT]") else end))
+            i = end
+        else:
+            i += 1
+    return spans
 
+
+def extract_delimited_spans(tokens: List[str], left_tag: str, right_tag: str) -> List[Tuple[int, int]]:
+    spans = []
+    stack = []
+    for i, token in enumerate(tokens):
+        if token == left_tag:
+            stack.append(i)
+        elif token == right_tag and stack:
+            start = stack.pop()
+            spans.append((start, i))
+    return spans
+
+
+def extract_protected_spans(
+    tokens: List[str],
+    tags: Optional[List[str]] = None,
+    control_tags: bool = False,
+    inline_tags: bool = False,
+    delimiters: bool = False,
+    lines: bool = False,
+    indented_blocks: bool = False,
+    all_options: bool = False
+) -> List[Tuple[int, int]]:
+    """
+    Extract spans of interest from a sequence of tokens based on specific language constructs.
+
+    Args:
+        tokens (List[str]): The tokenized input sequence.
+        tags (Optional[List[str]]): A list of tags to extract spans for, used when corresponding flags are False.
+        control_tags (bool): If True, extract spans for known control-structure keywords.
+        inline_tags (bool): If True, extract single-line spans for known inline keywords.
+        delimiters (bool): If True, extract spans enclosed by known delimiter pairs.
+        lines (bool): If True, extract line-based spans from [NEW_LINE], [INDENT], or [DEDENT] markers.
+        indented_blocks (bool): If True, extract indented code blocks delimited by [INDENT] and [DEDENT].
+        all_options (bool): If True, enables all other flags (control_tags, inline_tags, delimiters, lines, indented_blocks).
+
+    Returns:
+        List[Tuple[int, int]]: A list of unique spans, where each span is a tuple of (start_index, end_index).
+    """
+    spans = []
+    stack = []
+    tags = tags or []
+
+    if all_options:
+        control_tags = inline_tags = delimiters = lines = indented_blocks = True
+
+    if lines or "[NEW_LINE]" in tags:
+        last_line_break = -1
+        i = 0
+        while i < len(tokens):
+            if tokens[i] in ("[NEW_LINE]", "[INDENT]", "[DEDENT]"):
+                if tokens[i] == "[DEDENT]":
+                    dedent_start = i
+                    while i + 1 < len(tokens) and tokens[i + 1] == "[DEDENT]":
+                        i += 1
+                    if 0 <= last_line_break < dedent_start - 1:
+                        spans.append((last_line_break, dedent_start - 1))
+                    last_line_break = dedent_start
+                else:
+                    if 0 <= last_line_break < i - 1:
+                        spans.append((last_line_break, i - 1))
+                    last_line_break = i
+            i += 1
+        if last_line_break < len(tokens) - 1:
+            spans.append((last_line_break, len(tokens) - 1))
+
+    if indented_blocks or "[INDENT]" in tags:
+        for i, token in enumerate(tokens):
+            if token == "[INDENT]":
+                stack.append(i)
+            elif token == "[DEDENT]" and stack:
+                start = stack.pop()
+                spans.append((start, i))
+
+    control_keywords = [
+        "[IF]", "[ELIF]", "[ELSE]",
+        "[FOR]", "[ASYNC_FOR]",
+        "[WHILE]",
+        "[DEF]", "[ASYNC_DEF]",
+        "[CLASS]",
+        "[TRY]", "[EXCEPT]", "[EXCEPT_STAR]", "[FINALLY]",
+        "[WITH]", "[ASYNC_WITH]",
+        "[MATCH]", "[CASE]", "[MATCH_DEFAULT]", "[MATCH_STAR]"
+    ]
+
+    if control_tags:
+        for control_tag in control_keywords:
+            spans.extend(extract_control_structure_span(tokens, control_tag))
+    else:
+        for tag in tags:
+            if tag in control_keywords:
+                spans.extend(extract_control_structure_span(tokens, tag))
+
+    single_line_keywords = [
+        "[RAISE]", "[RETURN]", "[YIELD]", "[YIELD_FROM]",
+        "[ASSERT]", "[AWAIT]", "[DEL]", "[IMPORT]", "[FROM]",
+        "[GLOBAL]", "[NONLOCAL]"
+    ]
+
+    if inline_tags:
+        for single_tag in single_line_keywords:
+            spans.extend(extract_single_line_span(tokens, single_tag))
+    else:
+        for tag in tags:
+            if tag in single_line_keywords:
+                spans.extend(extract_single_line_span(tokens, tag))
+
+    delimiter_pairs = [
+        ("[DELIMIT_1_L]", "[DELIMIT_1_R]"),
+        ("[DELIMIT_2_L]", "[DELIMIT_2_R]"),
+        ("[DELIMIT_3_L]", "[DELIMIT_3_R]")
+    ]
+
+    if delimiters:
+        for left, right in delimiter_pairs:
+            spans.extend(extract_delimited_spans(tokens, left, right))
+    else:
+        for left, right in delimiter_pairs:
+            if left in tags or right in tags:
+                spans.extend(extract_delimited_spans(tokens, left, right))
+
+    spans = sorted(set(spans))
+    return spans
 
 
 if __name__ == "__main__":
@@ -155,7 +241,7 @@ if __name__ == "__main__":
 
     codes = []
     with open("preprocessed_dataset_100.json", "r", encoding="utf-8") as f:
-        for line in f: 
+        for line in f:
             obj = json.loads(line)
             if "code" in obj:
                 codes.append(obj["code"])
@@ -164,11 +250,15 @@ if __name__ == "__main__":
 
     for code in codes:
         parsed = pretokenize(ast.parse(code), _use_dedent=True, _use_semantics=True)
-        tokens = tokenize_pretokenized_string(parsed)
-        examples.append(tokens)
+        new_tokens = tokenize_pretokenized_string(parsed)
+        examples.append(new_tokens)
 
-    new_spans = extract_protected_spans(examples[0])
+
+    print(codes[0])
+    # print(examples[0])
+
+    new_spans = extract_protected_spans(examples[0], all_options=True)
     print(pretty_print_tokens(examples[0]))
-    print(new_spans)
-    print(segment_tokens(examples[0], 60, new_spans))
+    # print(new_spans)
+    # print(segment_tokens(examples[0], 60, new_spans))
     pretty_print_spans(examples[0], new_spans)
