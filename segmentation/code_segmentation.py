@@ -105,7 +105,8 @@ def extract_single_line_span(tokens: List[str], keyword_tag: str) -> List[Tuple[
             end = i + 1
             while end < len(tokens) and tokens[end] not in ("[NEW_LINE]", "[INDENT]", "[DEDENT]"):
                 end += 1
-            spans.append((start, end - 1 if end < len(tokens) and tokens[end] in ("[NEW_LINE]", "[INDENT]", "[DEDENT]") else end))
+            spans.append((start, end - 1 if end < len(tokens) and tokens[end] in (
+                "[NEW_LINE]", "[INDENT]", "[DEDENT]") else end))
             i = end
         else:
             i += 1
@@ -125,14 +126,15 @@ def extract_delimited_spans(tokens: List[str], left_tag: str, right_tag: str) ->
 
 
 def extract_protected_spans(
-    tokens: List[str],
-    tags: Optional[List[str]] = None,
-    control_tags: bool = False,
-    inline_tags: bool = False,
-    delimiters: bool = False,
-    lines: bool = False,
-    indented_blocks: bool = False,
-    all_options: bool = False
+        tokens: List[str],
+        tags: Optional[List[str]] = None,
+        control_tags: bool = False,
+        inline_tags: bool = False,
+        delimiters: bool = False,
+        lines: bool = False,
+        indented_blocks: bool = False,
+        all_options: bool = False,
+        strict: bool = False
 ) -> List[Tuple[int, int]]:
     """
     Extract spans of interest from a sequence of tokens based on specific language constructs.
@@ -146,6 +148,7 @@ def extract_protected_spans(
         lines (bool): If True, extract line-based spans from [NEW_LINE], [INDENT], or [DEDENT] markers.
         indented_blocks (bool): If True, extract indented code blocks delimited by [INDENT] and [DEDENT].
         all_options (bool): If True, enables all other flags (control_tags, inline_tags, delimiters, lines, indented_blocks).
+        strict (bool): If False (default), filters out spans that are nearly duplicates of others, such as spans that start or end one token apart. (control_tags, inline_tags, delimiters, lines, indented_blocks).
 
     Returns:
         List[Tuple[int, int]]: A list of unique spans, where each span is a tuple of (start_index, end_index).
@@ -233,32 +236,21 @@ def extract_protected_spans(
                 spans.extend(extract_delimited_spans(tokens, left, right))
 
     spans = sorted(set(spans))
+
+    if not strict:
+        filtered = []
+        seen = set()
+        for start, end in spans:
+            if (start, end - 1) in seen or \
+                    (start, end + 1) in seen or \
+                    (start - 1, end) in seen or \
+                    (start + 1, end) in seen or \
+                    (start - 1, end + 1) in seen or \
+                    (start - 1, end + 1) in seen:
+                continue
+            filtered.append((start, end))
+            seen.add((start, end))
+        print("x")
+        spans = filtered
+
     return spans
-
-
-if __name__ == "__main__":
-    examples = open("preprocessed_dataset_100.json", "r").read().split("\n\n\n\n")
-
-    codes = []
-    with open("preprocessed_dataset_100.json", "r", encoding="utf-8") as f:
-        for line in f:
-            obj = json.loads(line)
-            if "code" in obj:
-                codes.append(obj["code"])
-
-    examples = []
-
-    for code in codes:
-        parsed = pretokenize(ast.parse(code), _use_dedent=True, _use_semantics=True)
-        new_tokens = tokenize_pretokenized_string(parsed)
-        examples.append(new_tokens)
-
-
-    print(codes[0])
-    # print(examples[0])
-
-    new_spans = extract_protected_spans(examples[0], all_options=True)
-    print(pretty_print_tokens(examples[0]))
-    # print(new_spans)
-    # print(segment_tokens(examples[0], 60, new_spans))
-    pretty_print_spans(examples[0], new_spans)
