@@ -4,6 +4,9 @@ import autopep8
 import ast
 import hashlib
 import os
+import json
+
+from datasets.packaged_modules.pandas import pandas
 
 
 def is_valid_python(code):
@@ -72,14 +75,11 @@ def preprocess_function_with_index(example, indices):
 
 
 if __name__ == "__main__":
-
     access_token = os.getenv("HUGGINGFACE_TOKEN")
 
     ds = load_dataset("Nan-Do/code-search-net-python", token=access_token)
-    seen_hashes = set()
 
-    two_percent_size = int(1 * len(ds['train']))
-    ds['train'] = ds['train'].select(range(two_percent_size))
+    seen_hashes = set()
 
     valid_rows_before = len(ds["train"])
     ds_cleaned = ds["train"].map(preprocess_function)
@@ -88,8 +88,8 @@ if __name__ == "__main__":
     filtered_percentage = ((valid_rows_before - valid_rows_after) / valid_rows_before) * 100
     print(f"Percentage of filtered out data: {filtered_percentage: .2f}%")
 
-    ds_cleaned.to_json("preprocessed_dataset.json")
+    ds_cleaned.to_json("../../../csssspreprocessed_dataset.json")
 
-    with open("kept_indices.txt", "w") as f:
+    with open("../../../kept_indices.txt", "w") as f:
         for idx in kept_indices:
             f.write(f"{idx}\n")
