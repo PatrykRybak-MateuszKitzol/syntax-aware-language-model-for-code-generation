@@ -14,7 +14,7 @@ def is_valid_python(code):
         return False
 
 # Load the preprocessed JSON file
-with open("preprocessed_dataset.json", "r", encoding="utf-8") as f:
+with open("../../../preprocessed_dataset.json", "r", encoding="utf-8") as f:
     data = [json.loads(line) for line in f if line.strip()]
 
 print(f"Loaded {len(data)} code examples.")
