@@ -1,5 +1,9 @@
 # Ignore model checkpoints and training artifacts
 training/t5-base-doc2code-checkpoints/
+training/**.*.jsonl
+training/**.*.json
+training/**.*.safetensors
+training/wandb/*
 
 # Python
 __pycache__/
