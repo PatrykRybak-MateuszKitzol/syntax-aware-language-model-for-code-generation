@@ -1,0 +1,45 @@
+# Ignore model checkpoints and training artifacts
+training/t5-base-doc2code-checkpoints/
+training/**.*.jsonl
+training/**.*.json
+training/**.*.safetensors
+training/wandb/*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.log
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+*.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editors
+.vscode/
+.idea/
+
+# MyPy, Pytest, Coverage
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# System
+*.DS_Store
+Thumbs.db
+
