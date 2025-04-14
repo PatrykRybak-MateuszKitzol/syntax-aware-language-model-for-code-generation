@@ -1,0 +1,33 @@
+import json
+from pretty_printer import pretty_print_tokens, tokenize_pretokenized_string
+
+
+def load_predictions(file_path):
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def display_predictions(predictions, title):
+    print("=" * 80)
+    print(f"{title:^80}")
+    print("=" * 80)
+    for i, sample in enumerate(predictions):
+        print(f"\n### Example {i + 1}")
+        print("\n📌 Input:")
+        print(sample["input"])
+
+        print("\n✅ Reference:")
+        pretty_print_tokens(tokenize_pretokenized_string(sample["reference"]))
+
+        print("\n🤖 Prediction:")
+        pretty_print_tokens(tokenize_pretokenized_string(sample["prediction"]))
+
+        print("-" * 80)
+
+
+if __name__ == "__main__":
+    baseline = load_predictions("baseline_outputs.json")
+    finetuned = load_predictions("finetuned_outputs.json")
+
+    display_predictions(baseline, "Baseline Model Predictions")
+    display_predictions(finetuned, "Fine-Tuned Model Predictions")

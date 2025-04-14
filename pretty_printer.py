@@ -1,3 +1,5 @@
+import re
+
 def pretty_print_span(tokens, span):
     start, end = span
     span_tokens = tokens[start:(end+1)]
@@ -11,6 +13,9 @@ def pretty_print_spans(tokens, spans):
             span = (0, span[1])  # assume -1 means start from beginning
         pretty_print_span(tokens, span)
 
+def tokenize_pretokenized_string(s):
+    # Tokenizes strings like [DEF]train[DELIMIT_1_L]... into separate tokens
+    return re.findall(r'\[[^\[\]]+\]|[^\[\]]+', s)
 
 def pretty_print_tokens(tokens):
     indent_level = 0
