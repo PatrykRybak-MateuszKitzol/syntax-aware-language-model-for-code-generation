@@ -162,6 +162,7 @@ def main():
     # === EVALUATION METRIC ===
     def compute_metrics(eval_pred):
         bleu = evaluate.load("bleu")
+        rouge = evaluate.load("rouge")
         predictions, labels = eval_pred
 
         if isinstance(predictions, tuple):
@@ -172,11 +173,13 @@ def main():
         decoded_preds = tokenizer.batch_decode(predicted_ids, skip_special_tokens=True)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-        print(decoded_preds)
-        print(decoded_labels)
-        print([[label] for label in decoded_labels])
+        decoded_preds = [pred.strip() for pred in decoded_preds]
+        decoded_labels = [label.strip() for label in decoded_labels]
 
-        return bleu.compute(predictions=decoded_preds, references=[[label] for label in decoded_labels])
+        bleu_result = bleu.compute(predictions=decoded_preds, references=[[label] for label in decoded_labels])
+        rouge_result = rouge.compute(predictions=decoded_preds, references=decoded_labels)
+
+        return {**bleu_result, **rouge_result}
 
 
 
