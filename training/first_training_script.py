@@ -12,10 +12,15 @@ from transformers import (
 )
 import pynvml
 import psutil
-import sys
+import json
 import gc
 import numpy as np
 
+import sys
+from pathlib import Path
+
+root = Path().resolve().parent
+sys.path.insert(0, str(root))
 
 
 # === CONFIG ===
@@ -67,7 +72,56 @@ def log_gpu(threshold_warning_gb=4.0):
 
 
 
+def evaluate_in_chunks(trainer, dataset, chunk_size=10, save_outputs_path=None, tokenizer=None, raw_dataset=None):
+    all_metrics = []
+    all_outputs = []
+    for start_idx in range(0, len(dataset), chunk_size):
+        end_idx = start_idx + chunk_size
+        print(f"Evaluating examples {start_idx} to {end_idx - 1}")
+        chunk = dataset.select(range(start_idx, min(end_idx, len(dataset))))
+        metrics = trainer.evaluate(eval_dataset=chunk)
+        all_metrics.append(metrics)
 
+        # Generate outputs if requested
+        if save_outputs_path and tokenizer:
+            raw_chunk = raw_dataset.select(range(start_idx, min(end_idx, len(dataset)))) if raw_dataset else None
+            inputs = raw_chunk["docstring"] if raw_chunk else [""] * len(chunk)
+            references = raw_chunk["parsed"] if raw_chunk else [""] * len(chunk)
+            model_inputs = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True,
+                                     max_length=MAX_INPUT_LENGTH).to(trainer.model.device)
+            outputs = trainer.model.generate(**model_inputs, max_length=MAX_OUTPUT_LENGTH)
+            decoded_preds = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+            for i in range(len(inputs)):
+                all_outputs.append({
+                    "input": inputs[i],
+                    "reference": references[i],
+                    "prediction": decoded_preds[i]
+                })
+
+        torch.cuda.empty_cache()
+        gc.collect()
+        log_gpu()
+
+    if save_outputs_path and all_outputs:
+        with open(save_outputs_path, "w") as f:
+            json.dump(all_outputs, f, indent=2)
+        print(f"Saved generated outputs to {save_outputs_path}")
+
+    return all_metrics
+
+def save_metrics_to_file(metrics: dict, path: str):
+    with open(path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    print(f"Saved metrics to {path}")
+
+def average_metrics(metrics_list):
+    if not metrics_list:
+        return {}
+    keys = metrics_list[0].keys()
+    averaged = {}
+    for key in keys:
+        averaged[key] = np.mean([m[key] for m in metrics_list])
+    return averaged
 
 def main():
     set_seed(42)
@@ -76,7 +130,7 @@ def main():
 
 
     # === DATA PREPARATION & MODEL LOADING ===
-    dataset = load_dataset("json", data_files="docstring_and_code.jsonl", split="train[:20%]")
+    dataset = load_dataset("json", data_files="docstring_and_code.jsonl", split="train[:3%]")
     split_dataset = dataset.train_test_split(test_size=0.2, seed=42)
     test_valid_split = split_dataset["test"].train_test_split(test_size=0.5, seed=42)
     dataset_dict = {
@@ -112,7 +166,8 @@ def main():
 
     # === EVALUATION METRIC ===
     def compute_metrics(eval_pred):
-        bleu = evaluate.load("   bleu")
+        bleu = evaluate.load("bleu")
+        rouge = evaluate.load("rouge")
         predictions, labels = eval_pred
 
         if isinstance(predictions, tuple):
@@ -123,7 +178,13 @@ def main():
         decoded_preds = tokenizer.batch_decode(predicted_ids, skip_special_tokens=True)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-        return bleu.compute(predictions=decoded_preds, references=[[label] for label in decoded_labels])
+        decoded_preds = [pred.strip() for pred in decoded_preds]
+        decoded_labels = [label.strip() for label in decoded_labels]
+
+        bleu_result = bleu.compute(predictions=decoded_preds, references=[[label] for label in decoded_labels])
+        rouge_result = rouge.compute(predictions=decoded_preds, references=decoded_labels)
+
+        return {**bleu_result, **rouge_result}
 
 
 
@@ -167,11 +228,15 @@ def main():
     torch.cuda.empty_cache()
     log_gpu()
 
-
+    raw_subset = dataset_dict["test"].select(range(30))
+    tokenized_subset = raw_subset.map(preprocess, batched=True, remove_columns=raw_subset.column_names)
 
     # === EVALUATION OF FINE-TUNED MODEL===
-    metrics = trainer.evaluate(eval_dataset=tokenized_dataset["test"].select(range(10)))
-    print("Finetuned model performance:", metrics)
+    print("\n=== Finetuned model evaluation in chunks ===")
+    finetuned_metrics = evaluate_in_chunks(trainer, tokenized_subset, chunk_size=10, save_outputs_path="finetuned_outputs.json", tokenizer=tokenizer, raw_dataset=raw_subset)
+    avg_finetuned_metrics = average_metrics(finetuned_metrics)
+    print("Average Finetuned Metrics:", avg_finetuned_metrics)
+    save_metrics_to_file(avg_finetuned_metrics, "finetuned_metrics.json")
     log_gpu()
 
     # Cleaning after evaluation
@@ -200,8 +265,11 @@ def main():
         data_collator=data_collator
     )
 
-    baseline_metrics = baseline_trainer.evaluate(eval_dataset=tokenized_dataset["test"].select(range(10)))
-    print("Baseline model performance:", baseline_metrics)
+    print("\n=== Baseline model evaluation in chunks ===")
+    baseline_metrics = evaluate_in_chunks(baseline_trainer, tokenized_subset, chunk_size=10, save_outputs_path="baseline_outputs.json", tokenizer=tokenizer, raw_dataset=raw_subset)
+    avg_baseline_metrics = average_metrics(baseline_metrics)
+    print("Average Baseline Metrics:", avg_baseline_metrics)
+    save_metrics_to_file(avg_baseline_metrics, "baseline_metrics.json")
     log_gpu()
 
 

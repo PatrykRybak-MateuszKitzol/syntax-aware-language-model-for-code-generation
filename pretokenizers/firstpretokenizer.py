@@ -1,13 +1,20 @@
-import sys
+"""
 
-import sys
+"""
+
+import re
+
 from ast import _Precedence, _MULTI_QUOTES, _ALL_QUOTES, NodeVisitor, AsyncFunctionDef, FunctionDef, ClassDef, Module, Expr, Name, JoinedStr, Constant, FormattedValue, Tuple, If
 from contextlib import contextmanager, nullcontext
 
-from tags import _Tags
+import os
+import sys
 
+from core.pretokenizer import Pretoknizer
+from core.segmentator import SegmentatorContract
 
-class Pretokenizer(NodeVisitor):
+class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
+
     def __init__(self, *, _avoid_backslashes=False, _use_dedent=False, _use_semantics=True):
         self._source = []
         self._precedences = {}
@@ -18,9 +25,13 @@ class Pretokenizer(NodeVisitor):
         self._use_dedent = _use_dedent
         self._use_semantics = _use_semantics
 
+        Pretoknizer.__init__(self)
+        self._set_tags()
+        SegmentatorContract.__init__(self)
+
     def _add_semantic_tags(self, text):
         if self._use_semantics:
-            return _Tags.SEMANTIC_START + text + _Tags.SEMANTIC_END
+            return self.tags.SEMANTIC_START + text + self.tags.SEMANTIC_END
         return text
 
     def interleave(self, inter, f, seq):
@@ -37,21 +48,21 @@ class Pretokenizer(NodeVisitor):
     def items_view(self, traverser, items):
         if len(items) == 1:
             traverser(items[0])
-            self.write(_Tags.COMMA)
+            self.write(self.tags.COMMA)
         else:
-            self.interleave(lambda: self.write(_Tags.COMMA), traverser, items)
+            self.interleave(lambda: self.write(self.tags.COMMA), traverser, items)
 
     def maybe_newline(self):
         if self._source:
-            if not (self._source[-1] == _Tags.INDENT or self._source[-1] == _Tags.DEDENT):
-                self.write(_Tags.NEW_LINE)
+            if not (self._source[-1] == self.tags.INDENT or self._source[-1] == self.tags.DEDENT):
+                self.write(self.tags.NEW_LINE)
 
     def fill(self, text=""):
         self.maybe_newline()
         if self._use_dedent:
             self.write(text)
         else:
-            self.write(_Tags.INDENT * self._indent + text)
+            self.write(self.tags.INDENT * self._indent + text)
             
 
     def write(self, *text):
@@ -69,16 +80,16 @@ class Pretokenizer(NodeVisitor):
 
     @contextmanager
     def block(self, *, extra = None):
-        self.write(_Tags.BLOCK)
+        self.write(self.tags.BLOCK)
         if extra:
             self.write(extra)
         self._indent += 1
         if self._use_dedent:
-          self.write(_Tags.INDENT)
+          self.write(self.tags.INDENT)
         yield
         self._indent -= 1
         if self._use_dedent:
-            self.write(_Tags.DEDENT)
+            self.write(self.tags.DEDENT)
 
     @contextmanager
     def delimit(self, start, end):
@@ -93,7 +104,7 @@ class Pretokenizer(NodeVisitor):
             return nullcontext()
 
     def require_parens(self, precedence, node):
-        return self.delimit_if(_Tags.DELIMIT_1_L, _Tags.DELIMIT_1_R, self.get_precedence(node) > precedence)
+        return self.delimit_if(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R, self.get_precedence(node) > precedence)
 
     def get_precedence(self, node):
         return self._precedences.get(node, _Precedence.TEST)
@@ -131,7 +142,7 @@ class Pretokenizer(NodeVisitor):
         with self.require_parens(_Precedence.NAMED_EXPR, node):
             self.set_precedence(_Precedence.ATOM, node.target, node.value)
             self.traverse(node.target)
-            self.write(_Tags.NAMED_EXPR)
+            self.write(self.tags.NAMED_EXPR)
             self.traverse(node.value)
 
     def visit_Assign(self, node):
@@ -139,85 +150,85 @@ class Pretokenizer(NodeVisitor):
         for target in node.targets:
             self.set_precedence(_Precedence.TUPLE, target)
             self.traverse(target)
-            self.write(_Tags.ASSIGN)
+            self.write(self.tags.ASSIGN)
         self.traverse(node.value)
 
     def visit_AugAssign(self, node):
         self.fill()
         self.traverse(node.target)
-        self.write(getattr(_Tags, node.op.__class__.__name__.upper() + "_ASSIGN"))
+        self.write(getattr(self.tags, node.op.__class__.__name__.upper() + "_ASSIGN"))
         self.traverse(node.value)
 
     def visit_Return(self, node):
-        self.fill(_Tags.RETURN)
+        self.fill(self.tags.RETURN)
         if node.value:
             self.traverse(node.value)
 
     def visit_Pass(self, node):
-        self.fill(_Tags.PASS)
+        self.fill(self.tags.PASS)
 
     def visit_Break(self, node):
-        self.fill(_Tags.BREAK)
+        self.fill(self.tags.BREAK)
 
     def visit_Continue(self, node):
-        self.fill(_Tags.CONTINUE)
+        self.fill(self.tags.CONTINUE)
 
     def visit_Delete(self, node):
-        self.fill(_Tags.DEL)
-        self.interleave(lambda: self.write(_Tags.COMMA), self.traverse, node.targets)
+        self.fill(self.tags.DEL)
+        self.interleave(lambda: self.write(self.tags.COMMA), self.traverse, node.targets)
 
     def visit_Assert(self, node):
-        self.fill(_Tags.ASSERT)
+        self.fill(self.tags.ASSERT)
         self.traverse(node.test)
         if node.msg:
-            self.write(_Tags.COMMA)
+            self.write(self.tags.COMMA)
             self.traverse(node.msg)
 
     def visit_Await(self, node):
         with self.require_parens(_Precedence.AWAIT, node):
-            self.write(_Tags.AWAIT)
+            self.write(self.tags.AWAIT)
             if node.value:
                 self.set_precedence(_Precedence.ATOM, node.value)
                 self.traverse(node.value)
 
     def visit_Yield(self, node):
         with self.require_parens(_Precedence.YIELD, node):
-            self.write(_Tags.YIELD)
+            self.write(self.tags.YIELD)
             if node.value:
                 self.set_precedence(_Precedence.ATOM, node.value)
                 self.traverse(node.value)
 
     def visit_YieldFrom(self, node):
         with self.require_parens(_Precedence.YIELD, node):
-            self.write(_Tags.YIELD_FROM)
+            self.write(self.tags.YIELD_FROM)
             if not node.value:
                 raise ValueError("Node can't be used without a value attribute.")
             self.set_precedence(_Precedence.ATOM, node.value)
             self.traverse(node.value)
 
     def visit_Raise(self, node):
-        self.fill(_Tags.RAISE)
+        self.fill(self.tags.RAISE)
         if not node.exc:
             if node.cause:
                 raise ValueError(f"Node can't use cause without an exception.")
             return
         self.traverse(node.exc)
         if node.cause:
-            self.write(_Tags.FROM)
+            self.write(self.tags.FROM)
             self.traverse(node.cause)
 
     def do_visit_try(self, node):
-        self.fill(_Tags.TRY)
+        self.fill(self.tags.TRY)
         with self.block():
             self.traverse(node.body)
         for ex in node.handlers:
             self.traverse(ex)
         if node.orelse:
-            self.fill(_Tags.ELSE)
+            self.fill(self.tags.ELSE)
             with self.block():
                 self.traverse(node.orelse)
         if node.finalbody:
-            self.fill(_Tags.FINALLY)
+            self.fill(self.tags.FINALLY)
             with self.block():
                 self.traverse(node.finalbody)
 
@@ -238,29 +249,29 @@ class Pretokenizer(NodeVisitor):
             self._in_try_star = prev_in_try_star
 
     def visit_ExceptHandler(self, node):
-        self.fill(_Tags.EXCEPT_STAR if self._in_try_star else _Tags.EXCEPT)
+        self.fill(self.tags.EXCEPT_STAR if self._in_try_star else self.tags.EXCEPT)
         if node.type:
             self.traverse(node.type)
         if node.name:
-            self.write(_Tags.AS)
+            self.write(self.tags.AS)
             self.write(node.name)
         with self.block():
             self.traverse(node.body)
 
     def visit_ClassDef(self, node):
         self.maybe_newline()
-        self.fill(_Tags.CLASS + node.name)
-        with self.delimit_if(_Tags.DELIMIT_1_L, _Tags.DELIMIT_1_R, condition = node.bases or node.keywords):
+        self.fill(self.tags.CLASS + node.name)
+        with self.delimit_if(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R, condition = node.bases or node.keywords):
             comma = False
             for e in node.bases:
                 if comma:
-                    self.write(_Tags.COMMA)
+                    self.write(self.tags.COMMA)
                 else:
                     comma = True
                 self.traverse(e)
             for e in node.keywords:
                 if comma:
-                    self.write(_Tags.COMMA)
+                    self.write(self.tags.COMMA)
                 else:
                     comma = True
                 self.traverse(e)
@@ -269,74 +280,74 @@ class Pretokenizer(NodeVisitor):
             self.traverse(node.body)
 
     def visit_FunctionDef(self, node):
-        self._function_helper(node, _Tags.DEF)
+        self._function_helper(node, self.tags.DEF)
 
     def visit_AsyncFunctionDef(self, node):
-        self._function_helper(node, _Tags.ASYNC_DEF)
+        self._function_helper(node, self.tags.ASYNC_DEF)
 
     def _function_helper(self, node, fill_suffix):
         self.maybe_newline()
         def_str = fill_suffix + node.name
         self.fill(def_str)
-        with self.delimit(_Tags.DELIMIT_1_L, _Tags.DELIMIT_1_R):
+        with self.delimit(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R):
             self.traverse(node.args)
         with self.block():
             self.traverse(node.body)
 
     def visit_For(self, node):
-        self._for_helper(_Tags.FOR, node)
+        self._for_helper(self.tags.FOR, node)
 
     def visit_AsyncFor(self, node):
-        self._for_helper(_Tags.ASYNC_FOR, node)
+        self._for_helper(self.tags.ASYNC_FOR, node)
 
     def _for_helper(self, fill, node):
         self.fill(fill)
         self.set_precedence(_Precedence.TUPLE, node.target)
         self.traverse(node.target)
-        self.write(_Tags.IN)
+        self.write(self.tags.IN)
         self.traverse(node.iter)
         with self.block():
             self.traverse(node.body)
         if node.orelse:
-            self.fill(_Tags.ELSE)
+            self.fill(self.tags.ELSE)
             with self.block():
                 self.traverse(node.orelse)
 
     def visit_If(self, node):
-        self.fill(_Tags.IF)
+        self.fill(self.tags.IF)
         self.traverse(node.test)
         with self.block():
             self.traverse(node.body)
         while node.orelse and len(node.orelse) == 1 and isinstance(node.orelse[0], If):
             node = node.orelse[0]
-            self.fill(_Tags.ELIF)
+            self.fill(self.tags.ELIF)
             self.traverse(node.test)
             with self.block():
                 self.traverse(node.body)
         if node.orelse:
-            self.fill(_Tags.ELSE)
+            self.fill(self.tags.ELSE)
             with self.block():
                 self.traverse(node.orelse)
 
     def visit_While(self, node):
-        self.fill(_Tags.WHILE)
+        self.fill(self.tags.WHILE)
         self.traverse(node.test)
         with self.block():
             self.traverse(node.body)
         if node.orelse:
-            self.fill(_Tags.ELSE)
+            self.fill(self.tags.ELSE)
             with self.block():
                 self.traverse(node.orelse)
 
     def visit_With(self, node):
-        self.fill(_Tags.WITH)
-        self.interleave(lambda: self.write(_Tags.COMMA), self.traverse, node.items)
+        self.fill(self.tags.WITH)
+        self.interleave(lambda: self.write(self.tags.COMMA), self.traverse, node.items)
         with self.block():
             self.traverse(node.body)
 
     def visit_AsyncWith(self, node):
-        self.fill(_Tags.ASYNC_WITH)
-        self.interleave(lambda: self.write(_Tags.COMMA), self.traverse, node.items)
+        self.fill(self.tags.ASYNC_WITH)
+        self.interleave(lambda: self.write(self.tags.COMMA), self.traverse, node.items)
         with self.block():
             self.traverse(node.body)
 
@@ -371,14 +382,14 @@ class Pretokenizer(NodeVisitor):
         quote_type = quote_types[0]
 
         if quote_type == '"':
-            quote_type = _Tags.QUOTATION_1
+            quote_type = self.tags.QUOTATION_1
         elif quote_type == "'":
-            quote_type = _Tags.QUOTATION_2
+            quote_type = self.tags.QUOTATION_2
 
         self.write(f"{quote_type}{string}{quote_type}")
 
     def visit_JoinedStr(self, node):
-        self.write(_Tags.JOINEDSTR)
+        self.write(self.tags.JOINEDSTR)
 
         fstring_parts = []
         for value in node.values:
@@ -422,9 +433,9 @@ class Pretokenizer(NodeVisitor):
         quote_type = quote_types[0]
 
         if quote_type == '"':
-            quote_type = _Tags.QUOTATION_1
+            quote_type = self.tags.QUOTATION_1
         elif quote_type == "'":
-            quote_type = _Tags.QUOTATION_2
+            quote_type = self.tags.QUOTATION_2
 
         self.write(f"{quote_type}{value}{quote_type}")
 
@@ -452,7 +463,7 @@ class Pretokenizer(NodeVisitor):
             unparser.set_precedence(_Precedence.TEST.next(), inner)
             return unparser.visit(inner)
 
-        with self.delimit(_Tags.DELIMIT_3_L, _Tags.DELIMIT_3_R):
+        with self.delimit(self.tags.DELIMIT_3_L, self.tags.DELIMIT_3_R):
             expr = unparse_inner(node.value)
             if expr.startswith("{"):
                 # huh?
@@ -466,113 +477,113 @@ class Pretokenizer(NodeVisitor):
         if isinstance(value, (float, complex)):
             self.write(
                 repr(value)
-                .replace("inf", _Tags.INF)
-                .replace("nan", f"({_Tags.INF}-{_Tags.INF})")
+                .replace("inf", self.tags.INF)
+                .replace("nan", f"({self.tags.INF}-{self.tags.INF})")
             )
         elif self._avoid_backslashes and isinstance(value, str):
             self._write_str_avoiding_backslashes(self._add_semantic_tags(value))
         elif isinstance(value, str):
-            self.write(_Tags.QUOTATION_1 + self._add_semantic_tags(value) + _Tags.QUOTATION_1)
+            self.write(self.tags.QUOTATION_1 + self._add_semantic_tags(value) + self.tags.QUOTATION_1)
         else:
             self.write(self._add_semantic_tags(repr(value)))
 
     def visit_Constant(self, node):
         value = node.value
         if isinstance(value, tuple):
-            with self.delimit(_Tags.DELIMIT_1_L, _Tags.DELIMIT_1_R):
+            with self.delimit(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R):
                 self.items_view(self._write_constant, value)
         elif value is ...:
-            self.write(_Tags.ELLIPSIS)
+            self.write(self.tags.ELLIPSIS)
         else:
             if node.kind == "u":
-                self.write(_Tags.U)
+                self.write(self.U)
             self._write_constant(node.value)
 
     def visit_List(self, node):
-        with self.delimit(_Tags.DELIMIT_2_L, _Tags.DELIMIT_2_R):
-            self.interleave(lambda: self.write(_Tags.COMMA), self.traverse, node.elts)
+        with self.delimit(self.tags.DELIMIT_2_L, self.tags.DELIMIT_2_R):
+            self.interleave(lambda: self.write(self.tags.COMMA), self.traverse, node.elts)
 
     def visit_ListComp(self, node):
-        with self.delimit(_Tags.DELIMIT_2_L, _Tags.DELIMIT_2_R):
+        with self.delimit(self.tags.DELIMIT_2_L, self.tags.DELIMIT_2_R):
             self.traverse(node.elt)
             for gen in node.generators:
                 self.traverse(gen)
     
     def visit_GeneratorExp(self, node):
-        with self.delimit(_Tags.DELIMIT_1_L, _Tags.DELIMIT_1_R):
+        with self.delimit(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R):
             self.traverse(node.elt)
             for gen in node.generators:
                 self.traverse(gen)
 
     def visit_SetComp(self, node):
-        with self.delimit(_Tags.DELIMIT_3_L, _Tags.DELIMIT_3_R):
+        with self.delimit(self.tags.DELIMIT_3_L, self.tags.DELIMIT_3_R):
             self.traverse(node.elt)
             for gen in node.generators:
                 self.traverse(gen)
 
     def visit_DictComp(self, node):
-        with self.delimit(_Tags.DELIMIT_3_L, _Tags.DELIMIT_3_R):
+        with self.delimit(self.tags.DELIMIT_3_L, self.tags.DELIMIT_3_R):
             self.traverse(node.key)
-            self.write(_Tags.DICT_COLON)
+            self.write(self.tags.DICT_COLON)
             self.traverse(node.value)
             for gen in node.generators:
                 self.traverse(gen)
 
     def visit_comprehension(self, node):
         if node.is_async:
-            self.write(_Tags.ASYNC_FOR_COMP)
+            self.write(self.tags.ASYNC_FOR_COMP)
         else:
-            self.write(_Tags.FOR_COMP)
+            self.write(self.tags.FOR_COMP)
         self.set_precedence(_Precedence.TUPLE, node.target)
         self.traverse(node.target)
-        self.write(_Tags.IN_COMP)
+        self.write(self.tags.IN_COMP)
         self.set_precedence(_Precedence.TEST.next(), node.iter, *node.ifs)
         self.traverse(node.iter)
         for if_clause in node.ifs:
-            self.write(_Tags.IF_COMP)
+            self.write(self.tags.IF_COMP)
             self.traverse(if_clause)
 
     def visit_IfExp(self, node):
         with self.require_parens(_Precedence.TEST, node):
             self.set_precedence(_Precedence.TEST.next(), node.body, node.test)
             self.traverse(node.body)
-            self.write(_Tags.IF_COMP)
+            self.write(self.tags.IF_COMP)
             self.traverse(node.test)
-            self.write(_Tags.ELSE_COMP)
+            self.write(self.tags.ELSE_COMP)
             self.set_precedence(_Precedence.TEST, node.orelse)
             self.traverse(node.orelse)
 
     def visit_Set(self, node):
         if node.elts:
-            with self.delimit(_Tags.DELIMIT_3_L, _Tags.DELIMIT_3_R):
-                self.interleave(lambda: self.write(_Tags.COMMA), self.traverse, node.elts)
+            with self.delimit(self.tags.DELIMIT_3_L, self.tags.DELIMIT_3_R):
+                self.interleave(lambda: self.write(self.tags.COMMA), self.traverse, node.elts)
         else:
-            self.write(_Tags.DELIMIT_3_L + _Tags.UNPACK + _Tags.TUPLE_L + _Tags.TUPLE_R +_Tags.DELIMIT_3_R)
+            self.write(self.tags.DELIMIT_3_L + self.tags.UNPACK + self.tags.TUPLE_L + self.tags.TUPLE_R +self.tags.DELIMIT_3_R)
 
     def visit_Dict(self, node):
         def write_key_value_pair(k, v):
             self.traverse(k)
-            self.write(_Tags.DICT_COLON)
+            self.write(self.tags.DICT_COLON)
             self.traverse(v)
 
         def write_item(item):
             k, v = item
             if k is None:
-                self.write(_Tags.UNPACK)
+                self.write(self.tags.UNPACK)
                 self.set_precedence(_Precedence.EXPR, v)
                 self.traverse(v)
             else:
                 write_key_value_pair(k, v)
 
-        with self.delimit(_Tags.DELIMIT_3_L, _Tags.DELIMIT_3_R):
+        with self.delimit(self.tags.DELIMIT_3_L, self.tags.DELIMIT_3_R):
             self.interleave(
-                lambda: self.write(_Tags.COMMA), write_item, zip(node.keys, node.values)
+                lambda: self.write(self.tags.COMMA), write_item, zip(node.keys, node.values)
             )
 
     def visit_Tuple(self, node):
         with self.delimit_if(
-            _Tags.TUPLE_L,
-            _Tags.TUPLE_R,
+            self.tags.TUPLE_L,
+            self.tags.TUPLE_R,
             len(node.elts) == 0 or self.get_precedence(node) > _Precedence.TUPLE
         ):
             self.items_view(self.traverse, node.elts)
@@ -590,7 +601,7 @@ class Pretokenizer(NodeVisitor):
         operator = self.unop[name]
         operator_precedence = self.unop_precedence[operator]
         with self.require_parens(operator_precedence, node):
-            self.write(getattr(_Tags, name.upper()))
+            self.write(getattr(self.tags, name.upper()))
             self.set_precedence(operator_precedence, node.operand)
             self.traverse(node.operand)
 
@@ -626,13 +637,13 @@ class Pretokenizer(NodeVisitor):
         "**": _Precedence.POWER,
     }
 
-    binop_rassoc = frozenset((_Tags.POW,))
     def visit_BinOp(self, node):
+        binop_rassoc = frozenset((self.tags.POW,))
         name = node.op.__class__.__name__
         operator = self.binop[name]
         operator_precedence = self.binop_precedence[operator]
         with self.require_parens(operator_precedence, node):
-            if operator in self.binop_rassoc:
+            if operator in binop_rassoc:
                 left_precedence = operator_precedence.next()
                 right_precedence = operator_precedence
             else:
@@ -641,7 +652,7 @@ class Pretokenizer(NodeVisitor):
 
             self.set_precedence(left_precedence, node.left)
             self.traverse(node.left)
-            self.write(f"{getattr(_Tags, name.upper())}")
+            self.write(f"{getattr(self.tags, name.upper())}")
             self.set_precedence(right_precedence, node.right)
             self.traverse(node.right)
 
@@ -650,7 +661,7 @@ class Pretokenizer(NodeVisitor):
             self.set_precedence(_Precedence.CMP.next(), node.left, *node.comparators)
             self.traverse(node.left)
             for o, e in zip(node.ops, node.comparators):
-                self.write(getattr(_Tags, o.__class__.__name__.upper()))
+                self.write(getattr(self.tags, o.__class__.__name__.upper()))
                 self.traverse(e)
 
     boolops = {"And": "and", "Or": "or"}
@@ -667,29 +678,29 @@ class Pretokenizer(NodeVisitor):
             self.traverse(node)
 
         with self.require_parens(operator_precedence, node):
-            s = f"{getattr(_Tags, operator.upper())}"
+            s = f"{getattr(self.tags, operator.upper())}"
             self.interleave(lambda: self.write(s), increasing_level_traverse, node.values)
 
     def visit_Attribute(self, node):
         self.set_precedence(_Precedence.ATOM, node.value)
         self.traverse(node.value)
-        self.write(_Tags.DOT)
+        self.write(self.tags.DOT)
         self.write(node.attr)
 
     def visit_Call(self, node):
         self.set_precedence(_Precedence.ATOM, node.func)
         self.traverse(node.func)
-        with self.delimit(_Tags.DELIMIT_1_L, _Tags.DELIMIT_1_R):
+        with self.delimit(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R):
             comma = False
             for e in node.args:
                 if comma:
-                    self.write(_Tags.COMMA)
+                    self.write(self.tags.COMMA)
                 else:
                     comma = True
                 self.traverse(e)
             for e in node.keywords:
                 if comma:
-                    self.write(_Tags.COMMA)
+                    self.write(self.tags.COMMA)
                 else:
                     comma = True
                 self.traverse(e)
@@ -703,28 +714,28 @@ class Pretokenizer(NodeVisitor):
 
         self.set_precedence(_Precedence.ATOM, node.value)
         self.traverse(node.value)
-        with self.delimit(_Tags.DELIMIT_2_L, _Tags.DELIMIT_2_R):
+        with self.delimit(self.tags.DELIMIT_2_L, self.tags.DELIMIT_2_R):
             if is_non_empty_tuple(node.slice):
                 self.items_view(self.traverse, node.slice.elts)
             else:
                 self.traverse(node.slice)
 
     def visit_Starred(self, node):
-        self.write(_Tags.REFERENCE)
+        self.write(self.tags.REFERENCE)
         self.set_precedence(_Precedence.EXPR, node.value)
         self.traverse(node.value)
 
     def visit_Ellipsis(self, node):
-        self.write(_Tags.ELLIPSIS)
+        self.write(self.tags.ELLIPSIS)
 
     def visit_Slice(self, node):
         if node.lower:
             self.traverse(node.lower)
-        self.write(_Tags.SLICE)
+        self.write(self.tags.SLICE)
         if node.upper:
             self.traverse(node.upper)
         if node.step:
-            self.write(_Tags.SLICE)
+            self.write(self.tags.SLICE)
             self.traverse(node.step)
 
     def visit_arg(self, node):
@@ -739,75 +750,75 @@ class Pretokenizer(NodeVisitor):
             if first:
                 first = False
             else:
-                self.write(_Tags.COMMA)
+                self.write(self.tags.COMMA)
             self.traverse(a)
             if d:
-                self.write(_Tags.ASSIGN)
+                self.write(self.tags.ASSIGN)
                 self.traverse(d)
             if index == len(node.posonlyargs):
-                self.write(f"{_Tags.COMMA}{_Tags.POSONLYARGS}")
+                self.write(f"{self.tags.COMMA}{self.tags.POSONLYARGS}")
 
         if node.vararg or node.kwonlyargs:
             if first:
                 first = False
             else:
-                self.write(_Tags.COMMA)
-            self.write(_Tags.REFERENCE)
+                self.write(self.tags.COMMA)
+            self.write(self.tags.REFERENCE)
             if node.vararg:
                 self.write(self._add_semantic_tags(node.vararg.arg))
 
         if node.kwonlyargs:
             for a, d in zip(node.kwonlyargs, node.kw_defaults):
-                self.write(_Tags.COMMA)
+                self.write(self.tags.COMMA)
                 self.traverse(a)
                 if d:
-                    self.write(_Tags.ASSIGN)
+                    self.write(self.tags.ASSIGN)
                     self.traverse(d)
 
         if node.kwarg:
             if first:
                 first = False
             else:
-                self.write(_Tags.COMMA)
-            self.write(_Tags.KWARGS + self._add_semantic_tags(node.kwarg.arg))
+                self.write(self.tags.COMMA)
+            self.write(self.tags.KWARGS + self._add_semantic_tags(node.kwarg.arg))
 
     def visit_keyword(self, node):
         if node.arg is None:
-            self.write(_Tags.KWARGS)
+            self.write(self.tags.KWARGS)
         else:
             self.write(self._add_semantic_tags(node.arg))
-            self.write(_Tags.ASSIGN)
+            self.write(self.tags.ASSIGN)
         self.traverse(node.value)
 
     def visit_Lambda(self, node):
         with self.require_parens(_Precedence.TEST, node):
-            self.write(_Tags.LAMBDA)
+            self.write(self.tags.LAMBDA)
             with self.buffered() as buffer:
                 self.traverse(node.args)
             if buffer:
                 self.write(*buffer)
-            self.write(_Tags.LAMBDA_BODDY)
+            self.write(self.tags.LAMBDA_BODDY)
             self.set_precedence(_Precedence.TEST, node.body)
             self.traverse(node.body)
 
     def visit_withitem(self, node):
         self.traverse(node.context_expr)
         if node.optional_vars:
-            self.write(_Tags.AS_ITEM)
+            self.write(self.tags.AS_ITEM)
             self.traverse(node.optional_vars)
 
     def visit_Match(self, node):
-        self.fill(_Tags.MATCH)
+        self.fill(self.tags.MATCH)
         self.traverse(node.subject)
         with self.block():
             for case in node.cases:
                 self.traverse(case)
 
     def visit_match_case(self, node):
-        self.fill(_Tags.MATCH_CASE)
+        self.fill(self.tags.MATCH_CASE)
         self.traverse(node.pattern)
         if node.guard:
-            self.write(_Tags.GUARD)
+            self.write(self.tags.GUARD)
             self.traverse(node.guard)
         with self.block():
             self.traverse(node.body)
@@ -819,56 +830,56 @@ class Pretokenizer(NodeVisitor):
         self._write_constant(node.value)
 
     def visit_MatchSequence(self, node):
-        with self.delimit(_Tags.DELIMIT_2_L, _Tags.DELIMIT_2_R):
+        with self.delimit(self.tags.DELIMIT_2_L, self.tags.DELIMIT_2_R):
             self.interleave(
-                lambda: self.write(_Tags.COMMA), self.traverse, node.patterns
+                lambda: self.write(self.tags.COMMA), self.traverse, node.patterns
             )
 
     def visit_MatchStar(self, node):
         name = node.name
         if name is None:
-            name = _Tags.MATCH_DEFAULT
-        self.write(_Tags.MATCH_STAR + self._add_semantic_tags(name))
+            name = self.tags.MATCH_DEFAULT
+        self.write(self.tags.MATCH_STAR + self._add_semantic_tags(name))
 
     def visit_MatchMapping(self, node):
         def write_key_pattern_pair(pair):
             k, p = pair
             self.traverse(k)
-            self.write(_Tags.DICT_COLON)
+            self.write(self.tags.DICT_COLON)
             self.traverse(p)
 
-        with self.delimit(_Tags.DELIMIT_3_L, _Tags.DELIMIT_3_R):
+        with self.delimit(self.tags.DELIMIT_3_L, self.tags.DELIMIT_3_R):
             keys = node.keys
             self.interleave(
-                lambda: self.write(_Tags.COMMA),
+                lambda: self.write(self.tags.COMMA),
                 write_key_pattern_pair,
                 zip(keys, node.patterns, strict=True),
             )
             rest = node.rest
             if rest is not None:
                 if keys:
-                    self.write(_Tags.COMMA)
-                self.write(_Tags.UNPACK + self._add_semantic_tags(rest))
+                    self.write(self.tags.COMMA)
+                self.write(self.tags.UNPACK + self._add_semantic_tags(rest))
 
     def visit_MatchClass(self, node):
         self.set_precedence(_Precedence.ATOM, node.cls)
         self.traverse(node.cls)
-        with self.delimit(_Tags.DELIMIT_1_L, _Tags.DELIMIT_1_R):
+        with self.delimit(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R):
             patterns = node.patterns
             self.interleave(
-                lambda: self.write(_Tags.COMMA), self.traverse, patterns
+                lambda: self.write(self.tags.COMMA), self.traverse, patterns
             )
             attrs = node.kwd_attrs
             if attrs:
                 def write_attr_pattern(pair):
                     attr, pattern = pair
-                    self.write(self._add_semantic_tags(attr) + _Tags.ASSIGN)
+                    self.write(self._add_semantic_tags(attr) + self.tags.ASSIGN)
                     self.traverse(pattern)
 
                 if patterns:
-                    self.write(_Tags.COMMA)
+                    self.write(self.tags.COMMA)
                 self.interleave(
-                    lambda: self.write(_Tags.COMMA),
+                    lambda: self.write(self.tags.COMMA),
                     write_attr_pattern,
                     zip(attrs, node.kwd_patterns, strict=True),
                 )
@@ -877,20 +888,364 @@ class Pretokenizer(NodeVisitor):
         name = node.name
         pattern = node.pattern
         if name is None:
-            self.write(_Tags.MATCH_DEFAULT)
+            self.write(self.tags.MATCH_DEFAULT)
         elif pattern is None:
             self.write(self._add_semantic_tags(node.name))
         else:
             with self.require_parens(_Precedence.TEST, node):
                 self.set_precedence(_Precedence.BOR, node.pattern)
                 self.traverse(node.pattern)
-                self.write(_Tags.MATCH_AS + self._add_semantic_tags(node.name))
+                self.write(self.tags.MATCH_AS + self._add_semantic_tags(node.name))
 
     def visit_MatchOr(self, node):
         with self.require_parens(_Precedence.BOR, node):
             self.set_precedence(_Precedence.BOR.next(), *node.patterns)
-            self.interleave(lambda: self.write(_Tags.MATCH_OR), self.traverse, node.patterns)
+            self.interleave(lambda: self.write(self.tags.MATCH_OR), self.traverse, node.patterns)
+    
+    def _set_tags(self):
+        class Tags:
+            QUOTATION_1= "[QUOT_1]"
+            QUOTATION_2= "[QUOT_2]"
 
-def pretokenize(ast_obj, _use_dedent=False, _use_semantics=True):
-    pretokenizer = Pretokenizer(_use_dedent=_use_dedent, _use_semantics=_use_semantics)
-    return pretokenizer.visit(ast_obj)
+            DEF= "[DEF]"
+            ASYNC_DEF= "[ASYNC_DEF]"
+            CLASS= "[CLASS]"
+            IF= "[IF]"
+            ELIF= "[ELIF]"
+            ELSE= "[ELSE]"
+
+            FOR= "[FOR]"
+            ASYNC_FOR= "[ASYNC_FOR]"
+            WHILE= "[WHILE]"
+
+            WITH= "[WITH]"
+            ASYNC_WITH= "[ASYNC_WITH]"
+
+            TRY= "[TRY]"
+            EXCEPT= "[EXCEPT]"
+            EXCEPT_STAR= "[EXCEPT*]"
+            FINALLY= "[FINALLY]"
+
+            RAISE= "[RAISE]"
+
+            ASSERT= "[ASSERT]"
+
+            BREAK= "[BREAK]"
+            CONTINUE= "[CONTINUE]"
+
+            PASS= "[PASS]"
+
+            DEL= "[DEL]"
+
+            RETURN= "[RETURN]"
+            YIELD= "[YIELD]"
+            YIELD_FROM= "[YIELD_FROM]"
+
+            FROM= "[FROM]"
+            AS= "[AS]"
+
+            BLOCK= "[BLOCK]"
+
+            NAMED_EXPR= "[NAMED_EXPR]"
+            ASSIGN= "[ASSIGN]"
+
+            AWAIT= "[AWAIT]"
+
+            JOINEDSTR= "[F]"
+            U= "[U]"
+
+            ADD= "[ADD]"
+            SUB= "[SUB]"
+            MULT= "[MULT]"
+            MATMULT= "[MATMULT]"
+            DIV= "[DIV]"
+            MOD= "[MOD]"
+            LSHIFT= "[LSHIFT]"
+            RSHIFT= "[RSHIFT]"
+            BITOR= "[BITOR]"
+            BITXOR= "[BITXOR]"
+            BITAND= "[BITAND]"
+            FLOORDIV= "[FLOORDIV]"
+            POW= "[POW]"
+
+            EQ= "[EQ]"
+            NOTEQ= "[NOT_EQ]"
+            LT= "[LT]"
+            LTE= "[LT_E]"
+            GT= "[GT]"
+            GTE= "[GT_E]"
+            IS= "[IS]"
+            ISNOT= "[IS_NOT]"
+            IN= "[IN]"
+            NOTIN= "[NOT_IN]"
+            AND= "[AND]"
+            OR= "[OR]"
+
+            NOT= "[NOT]"
+            INVERT= "[INVERT]"
+            UADD= "[UADD]"
+            USUB= "[USUB]"
+
+            INDENT= "[INDENT]"
+            DEDENT= "[DEDENT]"
+            NEW_LINE= "[NEW_LINE]"
+            COMMA= "[COMMA]"
+
+            DELIMIT_1_L= "[DELIMIT_1_L]"
+            DELIMIT_1_R= "[DELIMIT_1_R]"
+            DELIMIT_2_L= "[DELIMIT_2_L]"
+            DELIMIT_2_R= "[DELIMIT_2_R]"
+            DELIMIT_3_L= "[DELIMIT_3_L]"
+            DELIMIT_3_R= "[DELIMIT_3_R]"
+
+            ADD_ASSIGN= "[ADD_ASSIGN]"
+            SUB_ASSIGN= "[SUB_ASSIGN]"
+            MULT_ASSIGN= "[MULT_ASSIGN]"
+            MATMULT_ASSIGN= "[MATMULT_ASSIGN]"
+            DIV_ASSIGN= "[DIV_ASSIGN]"
+            MOD_ASSIGN= "[MOD_ASSIGN]"
+            LSHIFT_ASSIGN= "[LSHIFT_ASSIGN]"
+            RSHIFT_ASSIGN= "[RSHIFT_ASSIGN]"
+            BITOR_ASSIGN= "[BITOR_ASSIGN]"
+            BITXOR_ASSIGN= "[BITXOR_ASSIGN]"
+            BITAND_ASSIGN= "[BITAND_ASSIGN]"
+            FLOORDIV_ASSIGN= "[FLOORDIV_ASSIGN]"
+            POW_ASSIGN= "[POW_ASSIGN]"
+
+            DICT_COLON= "[DICT_COLON]"
+            UNPACK= "[UNPACK]"
+
+            ASYNC_FOR_COMP= "[ASYNC_FOR_COMP]"
+            FOR_COMP= "[FOR_COMP]"
+            IF_COMP= "[IF_COMP]"
+            ELSE_COMP= "[ELSE_COMP]"
+            IN_COMP= "[IN_COMP]"
+
+            TUPLE_L= "[TUPLE_L]"
+            TUPLE_R= "[TUPLE_R]"
+
+            SLICE= "[SLICE]"
+
+            ELLIPSIS= "[ELLIPSIS]"
+
+            REFERENCE= "[REFERENCE]"
+
+            DOT= "[DOT]"
+
+            MATCH= "[MATCH]"
+            MATCH_CASE= "[CASE]"
+            MATCH_DEFAULT= "[MATCH_DEFAULT]"
+            MATCH_AS= "[MATCH_AS]"
+            MATCH_GUARD= "[MATCH_GUARD]"
+            MATCH_OR= "[MATCH_OR]"
+            MATCH_STAR= "[MATCH_STAR]"
+
+            POSONLYARGS= "[POSONLYARGS]"
+
+            KWARGS= "[KWARGS]"
+
+            LAMBDA= "[LAMBDA]"
+            LAMBDA_BODDY= "[LAMBDA_BODDY]"
+
+            AS_ITEM= "[AS_ITEM]"
+
+            GUARD= "[GUARD]"
+
+            INF= "[INF]"
+            NAN= "[NAN]"
+
+            SEMANTIC_START= "[SEMANTIC_START]"
+            SEMANTIC_END= "[SEMANTIC_END]"
+
+        tags_symbols = {
+
+            Tags.QUOTATION_1: "'",
+            Tags.QUOTATION_2: '"',
+            
+            Tags.DEF: "def ",
+            Tags.ASYNC_DEF: "async def ",
+            Tags.CLASS: "class ",
+            Tags.IF: "if ",
+            Tags.ELIF: "elif ",
+            Tags.ELSE: "else",
+
+            Tags.FOR: "for ",
+            Tags.ASYNC_FOR: "async for ",
+            Tags.WHILE: "while ",
+
+            Tags.WITH: "with ",
+            Tags.ASYNC_WITH: "async with ",
+
+            Tags.TRY: "try",
+            Tags.EXCEPT: "except ",
+            Tags.EXCEPT_STAR: "except* ",
+            Tags.FINALLY: "finally",
+
+            Tags.RAISE: "raise ",
+
+            Tags.ASSERT: "assert ",
+
+            Tags.BREAK: "break",
+            Tags.CONTINUE: "continue",
+
+            Tags.PASS: "pass",
+
+            Tags.DEL: "del ",
+
+            Tags.RETURN: "return ",
+            Tags.YIELD: "yield ",
+            Tags.YIELD_FROM: "yield from ",
+
+            Tags.FROM: " from ",
+            Tags.AS: " as ",
+
+            Tags.BLOCK: ":",
+
+            Tags.ASSIGN: " = ",
+            Tags.NAMED_EXPR: " := ",
+
+            Tags.AWAIT: "await ",
+
+            Tags.JOINEDSTR: "f",
+            Tags.U: "u",
+
+            Tags.ADD: " + ",
+            Tags.SUB: " - ",
+            Tags.MULT: " * ",
+            Tags.MATMULT: " @ ",
+            Tags.DIV: " / ",
+            Tags.MOD: " % ",
+            Tags.LSHIFT: " << ",
+            Tags.RSHIFT: " >> ",
+            Tags.BITOR: " | ",
+            Tags.BITAND: " & ",
+            Tags.BITXOR: " ^ ",
+            Tags.FLOORDIV: " // ",
+            Tags.POW: "**",
+
+            Tags.EQ: " == ",
+            Tags.NOTEQ: " != ",
+            Tags.GT: " > ",
+            Tags.GTE: " >= ",
+            Tags.LT: " < ",
+            Tags.LTE: " <= ",
+            Tags.IS: " is ",
+            Tags.ISNOT: " is not ",
+            Tags.IN: " in ",
+            Tags.NOTIN: " not in ",
+            Tags.AND: " and ",
+            Tags.OR: " or ",
+
+            Tags.NOT : "not ",
+            Tags.INVERT: "~",
+            Tags.UADD: "+",
+            Tags.USUB: "-",
+
+            Tags.INDENT: "    ",
+            Tags.DEDENT: "",
+            Tags.NEW_LINE: "\n",
+            Tags.COMMA: ", ",
+
+            Tags.DELIMIT_1_L: "(",
+            Tags.DELIMIT_1_R: ")",
+            Tags.DELIMIT_2_L: "[",
+            Tags.DELIMIT_2_R: "]",
+            Tags.DELIMIT_3_L: "{",
+            Tags.DELIMIT_3_R: "}",
+
+            Tags.ADD_ASSIGN: " += ",
+            Tags.SUB_ASSIGN: " -= ",
+            Tags.MULT_ASSIGN: " *= ",
+            Tags.MATMULT_ASSIGN: " @= ",
+            Tags.DIV_ASSIGN: " /= ",
+            Tags.MOD_ASSIGN: " %= ",
+            Tags.LSHIFT_ASSIGN: " <<= ",
+            Tags.RSHIFT_ASSIGN: " >>= ",
+            Tags.BITOR_ASSIGN: " |= ",
+            Tags.BITXOR_ASSIGN: " ^= ",
+            Tags.BITAND_ASSIGN: " &= ",
+            Tags.FLOORDIV_ASSIGN: " //= ",
+            Tags.POW_ASSIGN: " **= ",
+
+            Tags.DICT_COLON: ": ",
+            Tags.UNPACK: "**",
+
+            Tags.ASYNC_FOR_COMP: " async for ",
+            Tags.FOR_COMP: " for ",
+            Tags.IF_COMP: " if ",
+            Tags.ELSE_COMP: " else ",
+            Tags.IN_COMP: " in ",
+
+            Tags.TUPLE_L: "(",
+            Tags.TUPLE_R: ")",
+
+            Tags.SLICE: ":",
+
+            Tags.ELLIPSIS: "...",
+
+            Tags.REFERENCE: "*",
+
+            Tags.DOT: ".",
+
+            Tags.MATCH: "match ",
+            Tags.MATCH_CASE: "case ",
+            Tags.MATCH_DEFAULT: "_",
+            Tags.MATCH_AS: " as ",
+            Tags.MATCH_GUARD: " if ",
+            Tags.MATCH_OR: " | ",
+            Tags.MATCH_STAR: "*",
+
+            Tags.POSONLYARGS: "/",
+
+            Tags.KWARGS: "**",
+
+            Tags.LAMBDA: "lambda ",
+            Tags.LAMBDA_BODDY: ": ",
+
+            Tags.AS_ITEM: " as ",
+
+            Tags.GUARD: " if ",
+
+            Tags.INF: "inf",
+            Tags.NAN: "nan",
+
+            Tags.SEMANTIC_START: "",
+            Tags.SEMANTIC_END: "",
+        }
+
+        self.tags = Tags
+        self.tags_symbols = tags_symbols
+
+    def pretokenize(self, ast_obj):
+        return self.visit(ast_obj)
+
+    def reverse(self, text_with_tags: str):
+
+        def _reverse_without_dedent(text_with_tags):
+            for tag_name, tag in filter(lambda x: not x[0].startswith("_"),  self.tags.__dict__.items()):
+                text_with_tags = text_with_tags.replace(tag, self.tags_symbols[tag])
+            return text_with_tags
+
+        def _reverse_with_dedent(text_with_tags):
+            def smart_replace(match):
+                tag = match.group(0)
+                if tag == self.tags.INDENT:
+                    smart_replace.indent_level += 1
+                    return "\n" + self.tags_symbols[self.tags.INDENT] * smart_replace.indent_level
+                elif tag == self.tags.DEDENT:
+                    smart_replace.indent_level -= 1
+                    return "\n" + self.tags_symbols[self.tags.INDENT] * smart_replace.indent_level
+                return tag
+            
+            def collapse_newlines(text):
+                return text
+
+            smart_replace.indent_level = 0
+            inter_text = re.sub(fr"{re.escape(self.tags.INDENT)}|{re.escape(self.tags.DEDENT)}", smart_replace, text_with_tags)
+            return collapse_newlines(_reverse_without_dedent(inter_text))
+
+        if self._use_dedent:
+            return _reverse_with_dedent(text_with_tags)
+        else:
+            return _reverse_without_dedent(text_with_tags)
+    
