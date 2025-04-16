@@ -903,7 +903,11 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
             self.interleave(lambda: self.write(self.tags.MATCH_OR), self.traverse, node.patterns)
     
     def _set_tags(self):
-        class Tags:
+        class Meta(type):
+            def __getattr__(cls, name):
+                return ""
+                
+        class Tags(metaclass=Meta):
             QUOTATION_1= "[QUOT_1]"
             QUOTATION_2= "[QUOT_2]"
 
