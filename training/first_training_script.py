@@ -22,6 +22,7 @@ from pathlib import Path
 root = Path().resolve().parent
 sys.path.insert(0, str(root))
 
+from pretokenizers.firstpretokenizer import FirstPretokenizer
 
 # === CONFIG ===
 MODEL_NAME = "t5-base"
@@ -29,6 +30,8 @@ MAX_INPUT_LENGTH = 256
 MAX_OUTPUT_LENGTH = 512 #Maximum output length that t5-base supports (93% of data goes there without segmentation)
 PROJECT_NAME = "syntax-aware-language-model-for-code-generation"
 RUN_NAME = "t5-base-doc2code-run-3-10%-of-training-data"
+
+pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
 
 
 
@@ -94,8 +97,8 @@ def evaluate_in_chunks(trainer, dataset, chunk_size=10, save_outputs_path=None, 
             for i in range(len(inputs)):
                 all_outputs.append({
                     "input": inputs[i],
-                    "reference": references[i],
-                    "prediction": decoded_preds[i]
+                    "reference": pretokenizer.reverse(references[i]),
+                    "prediction": pretokenizer.reverse(decoded_preds[i])
                 })
 
         torch.cuda.empty_cache()
@@ -126,7 +129,6 @@ def average_metrics(metrics_list):
 def main():
     set_seed(42)
     wandb.init(project=PROJECT_NAME, name=RUN_NAME)
-
 
 
     # === DATA PREPARATION & MODEL LOADING ===
@@ -178,8 +180,8 @@ def main():
         decoded_preds = tokenizer.batch_decode(predicted_ids, skip_special_tokens=True)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-        decoded_preds = [pred.strip() for pred in decoded_preds]
-        decoded_labels = [label.strip() for label in decoded_labels]
+        decoded_preds = [pretokenizer.reverse(pred.strip()) for pred in decoded_preds]
+        decoded_labels = [pretokenizer.reverse(label.strip()) for label in decoded_labels]
 
         bleu_result = bleu.compute(predictions=decoded_preds, references=[[label] for label in decoded_labels])
         rouge_result = rouge.compute(predictions=decoded_preds, references=decoded_labels)
