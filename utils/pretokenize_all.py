@@ -1,8 +1,17 @@
 import ast
 import json
-from pretokenizer import pretokenize
+
+import sys
+from pathlib import Path
+
+root = Path().resolve().parent
+sys.path.insert(0, str(root))
+
+from pretokenizers.firstpretokenizer import FirstPretokenizer
+
 
 preprocessed_data = []
+pretokenizer = FirstPretokenizer(_use_dedent=False, _use_semantics=True)
 
 with open('../../../preprocessed_dataset.json', 'r', encoding='utf-8') as f:
     for line in f:
@@ -12,7 +21,7 @@ with open('../../../preprocessed_dataset.json', 'r', encoding='utf-8') as f:
 for example in preprocessed_data:
     code = example["code"]
     try:
-        parsed = pretokenize(ast.parse(code), _use_dedent=True, _use_semantics=True)
+        parsed = pretokenizer.pretokenize(ast.parse(code), _use_dedent=True, _use_semantics=True)
         example["parsed"] = parsed
     except SyntaxError as e:
         print(f"Syntax error in example {example.get('func_name', '')}: {e}")

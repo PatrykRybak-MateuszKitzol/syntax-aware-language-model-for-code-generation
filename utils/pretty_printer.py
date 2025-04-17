@@ -1,5 +1,12 @@
 import re
 
+import sys
+from pathlib import Path
+
+root = Path().resolve().parent
+sys.path.insert(0, str(root))
+
+
 def pretty_print_span(tokens, span):
     start, end = span
     span_tokens = tokens[start:(end+1)]

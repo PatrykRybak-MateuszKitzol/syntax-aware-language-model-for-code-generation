@@ -1,6 +1,6 @@
 import json
 
-parsed_dataset_path = '../../../parsed_dataset.json'
+parsed_dataset_path = '../../parsed_dataset.jso' # huh
 
 # Load the entire JSON array
 with open(parsed_dataset_path, 'r', encoding='utf-8') as f:

@@ -16,6 +16,11 @@ import json
 import gc
 import numpy as np
 
+import sys
+from pathlib import Path
+
+root = Path().resolve().parent
+sys.path.insert(0, str(root))
 
 
 # === CONFIG ===
