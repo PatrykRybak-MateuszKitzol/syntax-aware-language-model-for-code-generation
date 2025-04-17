@@ -24,10 +24,10 @@ def display_predictions(predictions, title):
         print(sample["input"])
 
         print("\n✅ Reference:")
-        pretty_print_tokens(tokenize_pretokenized_string(sample["reference"]))
+        print(sample["reference"])
 
         print("\n🤖 Prediction:")
-        pretty_print_tokens(tokenize_pretokenized_string(sample["prediction"]))
+        print(sample["prediction"])
 
         print("-" * 80)
 
