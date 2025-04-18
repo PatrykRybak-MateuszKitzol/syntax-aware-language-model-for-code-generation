@@ -171,3 +171,66 @@ class LogitsMaskingCallback(TrainerCallback):
             model.generate = self.original_generate
 
 
+def main():
+    model_name = "t5-small"
+    tokenizer = T5Tokenizer.from_pretrained(model_name)
+
+    # it will be taken from pretokenizer, but for now we good
+    tokenizer.add_tokens(["[DEF]", "[CALL]", "[RETURN]", "[SEMANTIC_START]", "[SEMANTIC_STOP]"])
+    semantic_start_id = tokenizer.convert_tokens_to_ids("[SEMANTIC_START]")
+    semantic_stop_id = tokenizer.convert_tokens_to_ids("[SEMANTIC_STOP]")
+
+    # this also will be set using tretokenize and original tokenizer's vocab
+    semantic_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in ["user", "data", "email", "input"]]
+    code_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in ["[DEF]", "[CALL]", "[RETURN]"]]
+
+    model = T5WithModeLoss.from_pretrained(
+        model_name,
+        semantic_start_id=semantic_start_id,
+        semantic_stop_id=semantic_stop_id,
+        semantic_token_ids=semantic_token_ids,
+        code_token_ids=code_token_ids
+    )
+    model.resize_token_embeddings(len(tokenizer))
+
+    train_dataset = ... 
+    eval_dataset = ...
+
+    training_args = TrainingArguments(
+        output_dir="./results",
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=8,
+        num_train_epochs=3,
+        evaluation_strategy="steps",
+        eval_steps=200,
+        logging_dir="./logs",
+        logging_steps=50,
+        save_strategy="steps",
+        save_steps=500,
+        report_to="none"
+    )
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        tokenizer=tokenizer,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        callbacks=[
+            LogitsMaskingCallback(
+                semantic_ids=semantic_token_ids,
+                code_ids=code_token_ids,
+                start_id=semantic_start_id,
+                stop_id=semantic_stop_id
+            )
+        ]
+    )
+
+    trainer.train()
+
+if __name__ == "__main__":
+
+    # Actually, I dont know if it works and it needs to be tested.
+
+    main()
+
