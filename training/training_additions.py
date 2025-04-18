@@ -129,3 +129,45 @@ class SemanticCodeLogitsMask(LogitsProcessor):
         return scores
 
 
+class LogitsMaskingCallback(TrainerCallback):
+    """
+    Callback to override the generate method of the model to apply logits masking during evaluation and prediction in training process.
+    This is for benchmark purposes during training evaluation. Training itself doesnt use generate().
+    This is needed for more accurate evaluation, couse model usage is based logits masking.
+    """
+
+    def __init__(self, semantic_ids, code_ids, start_id, stop_id):
+        self.semantic_ids = semantic_ids
+        self.code_ids = code_ids
+        self.start_id = start_id
+        self.stop_id = stop_id
+        self.original_generate = None
+
+    def _override_generate(self, model):
+        processor = SemanticCodeLogitsMask(
+            semantic_token_ids=self.semantic_ids,
+            code_token_ids=self.code_ids,
+            semantic_start_id=self.start_id,
+            semantic_stop_id=self.stop_id
+        )
+
+        if self.original_generate is None:
+            self.original_generate = model.generate
+
+        def generate_with_masking(*args, **kwargs):
+            kwargs["logits_processor"] = LogitsProcessorList([processor])
+            return self.original_generate(*args, **kwargs)
+
+        model.generate = generate_with_masking
+
+    def on_evaluate(self, args, state, control, model=None, **kwargs):
+        self._override_generate(model)
+
+    def on_predict(self, args, state, control, model=None, **kwargs):
+        self._override_generate(model)
+
+    def on_train_end(self, args, state, control, model=None, **kwargs):
+        if self.original_generate:
+            model.generate = self.original_generate
+
+
