@@ -95,3 +95,37 @@ class T5WithModeLoss(T5ForConditionalGeneration):
         mode_loss = self.bce_loss(mode_logits, mode_labels)
 
         return main_loss + 0.2 * mode_loss
+
+class SemanticCodeLogitsMask(LogitsProcessor):
+    def __init__(self, semantic_token_ids, code_token_ids, semantic_start_id, semantic_stop_id):
+        self.semantic_token_ids = set(semantic_token_ids)
+        self.code_token_ids = set(code_token_ids)
+        self.semantic_start_id = semantic_start_id
+        self.semantic_stop_id = semantic_stop_id
+
+    def __call__(self, input_ids, scores):
+        """
+        Analizing this code it is worth remebering that "semantic start" token belongs to code tokens and "semantic stop" token belongs to semantic ones.
+        """
+
+        batch_size, cur_len = input_ids.shape
+        for b in range(batch_size):
+            seq = input_ids[b].tolist()
+            is_semantic = False
+            prev_tok = None
+            for tok in seq:
+                if prev_tok == self.semantic_start_id:
+                    is_semantic = True
+                elif tok == self.semantic_stop_id:
+                    is_semantic = False
+                prev_tok = tok
+
+            if is_semantic:
+                for tid in self.code_token_ids:
+                    scores[b, tid] = -1e9
+            else:
+                for tid in self.semantic_token_ids:
+                    scores[b, tid] = -1e9
+        return scores
+
+
