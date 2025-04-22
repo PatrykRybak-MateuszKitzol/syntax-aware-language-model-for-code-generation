@@ -10,6 +10,15 @@ from transformers import (
     LogitsProcessorList
 )
 
+import sys
+from pathlib import Path
+
+root = Path().resolve().parent
+sys.path.insert(0, str(root))
+
+from pretokenizers.firstpretokenizer import FirstPretokenizer
+
+
 class T5WithModeLoss(T5ForConditionalGeneration):
     """
     Model wrapper with mode loss and loss mask.
@@ -82,9 +91,11 @@ class T5WithModeLoss(T5ForConditionalGeneration):
         hidden = outputs.decoder_hidden_states[-1]
         vocab_size = logits.size(-1)
 
+        # TODO mozliwe ze trzeba tez maskowac paddingi
+
         # loss mask
         loss_mask = self.compute_loss_mask(labels)
-        loss_fct = nn.CrossEntropyLoss(reduction='none')
+        loss_fct = nn.CrossEntropyLoss(reduction='none', ignore_index=self.config.pad_token_id)
         raw_loss = loss_fct(logits.view(-1, vocab_size), labels.view(-1))
         masked_loss = raw_loss * loss_mask.view(-1)
         main_loss = masked_loss.mean()
@@ -112,13 +123,11 @@ class SemanticCodeLogitsMask(LogitsProcessor):
         for b in range(batch_size):
             seq = input_ids[b].tolist()
             is_semantic = False
-            prev_tok = None
             for tok in seq:
-                if prev_tok == self.semantic_start_id:
+                if tok == self.semantic_start_id:
                     is_semantic = True
-                elif tok == self.semantic_stop_id:
+                if tok == self.semantic_stop_id:
                     is_semantic = False
-                prev_tok = tok
 
             if is_semantic:
                 for tid in self.code_token_ids:
@@ -174,22 +183,31 @@ class LogitsMaskingCallback(TrainerCallback):
 def main():
     model_name = "t5-small"
     tokenizer = T5Tokenizer.from_pretrained(model_name)
+    pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
 
-    # it will be taken from pretokenizer, but for now we good
-    tokenizer.add_tokens(["[DEF]", "[CALL]", "[RETURN]", "[SEMANTIC_START]", "[SEMANTIC_STOP]"])
-    semantic_start_id = tokenizer.convert_tokens_to_ids("[SEMANTIC_START]")
-    semantic_stop_id = tokenizer.convert_tokens_to_ids("[SEMANTIC_STOP]")
+    semantic_token_ids = [
+        i for i in range(tokenizer.vocab_size)
+        if i not in tokenizer.all_special_ids
+    ]
 
-    # this also will be set using tretokenize and original tokenizer's vocab
-    semantic_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in ["user", "data", "email", "input"]]
-    code_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in ["[DEF]", "[CALL]", "[RETURN]"]]
+    tags = [v for k, v in pretokenizer.tags.__dict__.items() if not k.startswith("_")]
+    tokenizer.add_tokens(tags)
+
+    code_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in tags]
+
+    semantic_start_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_START)
+    semantic_end_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_END)
+
+    semantic_token_ids.append(semantic_end_id)
+    code_token_ids.remove(semantic_end_id)
+    code_token_ids.append(tokenizer.convert_tokens_to_ids("</s>"))
 
     model = T5WithModeLoss.from_pretrained(
         model_name,
         semantic_start_id=semantic_start_id,
-        semantic_stop_id=semantic_stop_id,
+        semantic_stop_id=semantic_end_id,
         semantic_token_ids=semantic_token_ids,
-        code_token_ids=code_token_ids
+        code_token_ids=code_token_ids,
     )
     model.resize_token_embeddings(len(tokenizer))
 
@@ -221,7 +239,7 @@ def main():
                 semantic_ids=semantic_token_ids,
                 code_ids=code_token_ids,
                 start_id=semantic_start_id,
-                stop_id=semantic_stop_id
+                stop_id=semantic_end_id
             )
         ]
     )
