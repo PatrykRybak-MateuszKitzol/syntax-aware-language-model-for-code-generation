@@ -483,7 +483,7 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
         elif self._avoid_backslashes and isinstance(value, str):
             self._write_str_avoiding_backslashes(self._add_semantic_tags(value))
         elif isinstance(value, str):
-            self.write(self.tags.QUOTATION_1 + self._add_semantic_tags(value) + self.tags.QUOTATION_1)
+            self.write(self.tags.QUOTATION_2 + self._add_semantic_tags(value) + self.tags.QUOTATION_2)
         else:
             self.write(self._add_semantic_tags(repr(value)))
 
@@ -1239,13 +1239,15 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
                 elif tag == self.tags.DEDENT:
                     smart_replace.indent_level -= 1
                     return "\n" + self.tags_symbols[self.tags.INDENT] * smart_replace.indent_level
+                elif tag == self.tags.NEW_LINE:
+                    return "\n" + self.tags_symbols[self.tags.INDENT] * smart_replace.indent_level
                 return tag
             
             def collapse_newlines(text):
                 return text
 
             smart_replace.indent_level = 0
-            inter_text = re.sub(fr"{re.escape(self.tags.INDENT)}|{re.escape(self.tags.DEDENT)}", smart_replace, text_with_tags)
+            inter_text = re.sub(fr"{re.escape(self.tags.INDENT)}|{re.escape(self.tags.DEDENT)}|{re.escape(self.tags.NEW_LINE)}", smart_replace, text_with_tags)
             return collapse_newlines(_reverse_without_dedent(inter_text))
 
         if self._use_dedent:
