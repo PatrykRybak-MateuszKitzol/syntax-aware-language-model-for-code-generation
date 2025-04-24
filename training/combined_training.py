@@ -4,7 +4,6 @@ import torch
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
-    AutoModelForSeq2SeqLM,
     TrainingArguments,
     Trainer,
     DataCollatorForSeq2Seq,
@@ -23,20 +22,19 @@ root = Path().resolve().parent
 sys.path.insert(0, str(root))
 
 from pretokenizers.firstpretokenizer import FirstPretokenizer
+from training_additions import T5WithModeLoss, LogitsMaskingCallback
 
 # === CONFIG ===
 MODEL_NAME = "t5-base"
 MAX_INPUT_LENGTH = 256
-MAX_OUTPUT_LENGTH = 512 #Maximum output length that t5-base supports (93% of data goes there without segmentation)
+MAX_OUTPUT_LENGTH = 512
 PROJECT_NAME = "syntax-aware-language-model-for-code-generation"
 RUN_NAME = "t5-base-doc2code-run-3-10%-of-training-data"
 
 pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
 
-
-
 def log_gpu(threshold_warning_gb=4.0):
-    print("-" * 30)  # Separator for clarity
+    print("-" * 30)
     if torch.cuda.is_available():
         try:
             device_index = torch.cuda.current_device()
@@ -60,55 +58,102 @@ def log_gpu(threshold_warning_gb=4.0):
             print(f"Peak memory used (PyTorch):  {peak_allocated:.2f} GiB")
 
             if free_mem_gb < threshold_warning_gb:
-                print(f"⚠️  WARNING: Low available VRAM ({free_mem_gb:.2f} GiB) — evaluation might crash.")
+                print(f"\u26a0\ufe0f  WARNING: Low available VRAM ({free_mem_gb:.2f} GiB) — evaluation might crash.")
 
         except Exception as e:
             print(f"Could not get GPU memory info. Error: {e}")
-
     else:
         print("CUDA not available, cannot check GPU memory.")
 
-    # System RAM check
     mem = psutil.virtual_memory()
     print(f"System RAM usage: {mem.percent:.2f}% ({mem.used / (1024 ** 3):.2f} GiB / {mem.total / (1024 ** 3):.2f} GiB)")
-    print("-" * 30)  # End separator
-
-
+    print("-" * 30)
 
 def evaluate_in_chunks(trainer, dataset, chunk_size=10, save_outputs_path=None, tokenizer=None, raw_dataset=None):
     all_metrics = []
     all_outputs = []
+
+    print("[DEBUG] Starting evaluate_in_chunks...")
+
     for start_idx in range(0, len(dataset), chunk_size):
         end_idx = start_idx + chunk_size
         print(f"Evaluating examples {start_idx} to {end_idx - 1}")
+
         chunk = dataset.select(range(start_idx, min(end_idx, len(dataset))))
         metrics = trainer.evaluate(eval_dataset=chunk)
         all_metrics.append(metrics)
 
-        # Generate outputs if requested
         if save_outputs_path and tokenizer:
             raw_chunk = raw_dataset.select(range(start_idx, min(end_idx, len(dataset)))) if raw_dataset else None
             inputs = raw_chunk["docstring"] if raw_chunk else [""] * len(chunk)
             references = raw_chunk["parsed"] if raw_chunk else [""] * len(chunk)
-            model_inputs = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True,
-                                     max_length=MAX_INPUT_LENGTH).to(trainer.model.device)
-            outputs = trainer.model.generate(**model_inputs, max_length=MAX_OUTPUT_LENGTH)
-            decoded_preds = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+            # Tokenize inputs
+            model_inputs = tokenizer(
+                inputs,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=MAX_INPUT_LENGTH
+            ).to(trainer.model.device)
+
+            # Generate predictions
+            outputs = trainer.model.generate(
+                **model_inputs,
+                max_new_tokens=512,
+                do_sample=False,
+                num_beams=1,
+                repetition_penalty=1.5,  # ✅ helps stop infinite loops
+                eos_token_id=tokenizer.convert_tokens_to_ids("</s>"),  # or semantic_end_id
+                early_stopping=True,
+                return_dict_in_generate=True,
+                output_scores=True,
+                no_repeat_ngram_size=3,
+                temperature=1.0
+            )
+
+            decoded_preds = tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
+            decoded_preds_raw = tokenizer.batch_decode(outputs.sequences, skip_special_tokens=False)
+
+            print("✅ [DEBUG] Generation complete. Sample output IDs:")
+            print(outputs.sequences[0].tolist())
+
             for i in range(len(inputs)):
-                all_outputs.append({
-                    "input": inputs[i],
-                    "reference": pretokenizer.reverse(references[i]),
-                    "prediction": pretokenizer.reverse(decoded_preds[i])
-                })
+                try:
+                    reversed_ref = pretokenizer.reverse(references[i])
+                    reversed_pred = pretokenizer.reverse(decoded_preds[i])
+
+                    all_outputs.append({
+                        "input": inputs[i],
+                        "decoded_input": tokenizer.decode(model_inputs["input_ids"][i], skip_special_tokens=False),
+                        "input_token_ids": model_inputs["input_ids"][i].tolist(),
+                        "raw_reference": references[i],
+                        "raw_prediction": decoded_preds_raw[i],
+                        "prediction_token_ids": outputs.sequences[i].tolist(),
+                        "reference": reversed_ref,
+                        "prediction": reversed_pred,
+                        "output_length": len(outputs.sequences[i].tolist())
+                    })
+
+                except Exception as e:
+                    print(f"❌ Error reversing index {i}: {e}")
+
+        torch.cuda.empty_cache()
+        gc.collect()
+        log_gpu()
 
         torch.cuda.empty_cache()
         gc.collect()
         log_gpu()
 
     if save_outputs_path and all_outputs:
-        with open(save_outputs_path, "w") as f:
-            json.dump(all_outputs, f, indent=2)
-        print(f"Saved generated outputs to {save_outputs_path}")
+        print(f"[DEBUG] Attempting to save {len(all_outputs)} outputs...")
+        try:
+            with open(save_outputs_path, "w") as f:
+                json.dump(all_outputs, f, indent=2)
+            print(f"Saved generated outputs to {save_outputs_path}")
+        except Exception as e:
+            print(f"❌ Error saving outputs: {e}")
 
     return all_metrics
 
@@ -130,8 +175,6 @@ def main():
     set_seed(42)
     wandb.init(project=PROJECT_NAME, name=RUN_NAME)
 
-
-    # === DATA PREPARATION & MODEL LOADING ===
     dataset = load_dataset("json", data_files="docstring_and_code.jsonl", split="train[:15%]")
     split_dataset = dataset.train_test_split(test_size=0.2, seed=42)
     test_valid_split = split_dataset["test"].train_test_split(test_size=0.5, seed=42)
@@ -141,32 +184,43 @@ def main():
         "test": test_valid_split["test"]
     }
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
 
+    semantic_token_ids = [i for i in range(tokenizer.vocab_size) if i not in tokenizer.all_special_ids]
+    tags = [v for k, v in pretokenizer.tags.__dict__.items() if not k.startswith("_")]
+    tokenizer.add_tokens(tags)
+    code_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in tags]
+    semantic_start_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_START)
+    semantic_end_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_END)
+    semantic_token_ids.append(semantic_end_id)
+    code_token_ids.remove(semantic_end_id)
+    code_token_ids.append(tokenizer.convert_tokens_to_ids("</s>"))
 
+    model = T5WithModeLoss.from_pretrained(
+        MODEL_NAME,
+        semantic_start_id=semantic_start_id,
+        semantic_stop_id=semantic_end_id,
+        semantic_token_ids=semantic_token_ids,
+        code_token_ids=code_token_ids,
+    )
+    model.resize_token_embeddings(len(tokenizer))
 
-    # === MAPPING DOCSTRING TO CODE ===
+    print("Custom tags added to tokenizer:")
+    for tag in tags:
+        tag_id = tokenizer.convert_tokens_to_ids(tag)
+        print(f"{tag} -> {tag_id}")
+
     def preprocess(batch):
         input_enc = tokenizer(
-            batch["docstring"],
-            padding="max_length",
-            truncation=True,
-            max_length=MAX_INPUT_LENGTH
+            batch["docstring"], padding="max_length", truncation=True, max_length=MAX_INPUT_LENGTH
         )
         target_enc = tokenizer(
-            batch["parsed"],
-            padding="max_length",
-            truncation=True,
-            max_length=MAX_OUTPUT_LENGTH
+            batch["parsed"], padding="max_length", truncation=True, max_length=MAX_OUTPUT_LENGTH
         )
         input_enc["labels"] = target_enc["input_ids"]
         return input_enc
 
     tokenized_dataset = {k: v.map(preprocess, batched=True, remove_columns=v.column_names) for k, v in dataset_dict.items()}
 
-
-
-    # === EVALUATION METRIC ===
     def compute_metrics(eval_pred):
         bleu = evaluate.load("bleu")
         rouge = evaluate.load("rouge")
@@ -180,6 +234,9 @@ def main():
         decoded_preds = tokenizer.batch_decode(predicted_ids, skip_special_tokens=True)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
+        print("Raw decoded output:")
+        print(decoded_preds[:5])
+
         decoded_preds = [pretokenizer.reverse(pred.strip()) for pred in decoded_preds]
         decoded_labels = [pretokenizer.reverse(label.strip()) for label in decoded_labels]
 
@@ -188,25 +245,22 @@ def main():
 
         return {**bleu_result, **rouge_result}
 
-
-
-    # === TRAINING ===
-    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model) #Each batch is padded only up to the longest sample in that batch
+    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
 
     training_args = TrainingArguments(
         per_device_eval_batch_size=4,
         eval_accumulation_steps=32,
         output_dir="./t5-base-doc2code-checkpoints",
-        per_device_train_batch_size=4, # currently the best combo I found so far for RTX5070Ti
-        gradient_accumulation_steps=1, # currently the best combo I found so far for RTX5070Ti
-        num_train_epochs=3, #later on to be changed to 3 - now is 1 because it's 3 times faster
-        learning_rate=5e-5, #common default for T5
-        weight_decay=0.01, #L2 regularization
-        eval_steps=500, #validation after each 500 steps
-        save_steps=500, #checkpoint every 500 steps
-        logging_steps=100, #logging loss and learning rata each 100 steps
-        save_total_limit=2, #only last 2 checkpoints saved during training
-        bf16=True, #16-bit floating point numbers (FP16) instead of (FP32) - 50% less VRAM
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=2,
+        num_train_epochs=3,
+        learning_rate=5e-5,
+        weight_decay=0.01,
+        eval_steps=500,
+        save_steps=500,
+        logging_steps=100,
+        save_total_limit=2,
+        bf16=True,
         report_to="wandb",
         run_name=RUN_NAME,
     )
@@ -223,40 +277,41 @@ def main():
 
     trainer.train()
 
-    # Cleaning after training
     del tokenized_dataset["train"]
     del tokenized_dataset["validation"]
     gc.collect()
     torch.cuda.empty_cache()
     log_gpu()
 
-    raw_subset = dataset_dict["test"].select(range(50))
+    raw_subset = dataset_dict["test"].select(range(5))
     tokenized_subset = raw_subset.map(preprocess, batched=True, remove_columns=raw_subset.column_names)
 
-    # === EVALUATION OF FINE-TUNED MODEL===
     print("\n=== Finetuned model evaluation in chunks ===")
-    finetuned_metrics = evaluate_in_chunks(trainer, tokenized_subset, chunk_size=10, save_outputs_path="finetuned_outputs.json", tokenizer=tokenizer, raw_dataset=raw_subset)
+    finetuned_metrics = evaluate_in_chunks(trainer, tokenized_subset, chunk_size=5, save_outputs_path="finetuned_outputs.json", tokenizer=tokenizer, raw_dataset=raw_subset)
     avg_finetuned_metrics = average_metrics(finetuned_metrics)
     print("Average Finetuned Metrics:", avg_finetuned_metrics)
     save_metrics_to_file(avg_finetuned_metrics, "finetuned_metrics.json")
     log_gpu()
 
-    # Cleaning after evaluation
     del model
     del trainer
     torch.cuda.empty_cache()
     gc.collect()
     log_gpu()
 
-
-
-    # === EVALUATION OF BASELINE MODEL===
-    baseline_model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+    baseline_model = T5WithModeLoss.from_pretrained(
+        MODEL_NAME,
+        semantic_start_id=semantic_start_id,
+        semantic_stop_id=semantic_end_id,
+        semantic_token_ids=semantic_token_ids,
+        code_token_ids=code_token_ids,
+    )
+    baseline_model.resize_token_embeddings(len(tokenizer))
 
     baseline_eval_args = TrainingArguments(
-        output_dir="./baseline_eval_temp",  # Temporary directory for evaluation outputs (if any)
-        per_device_eval_batch_size=1,  # Keep evaluation batch size consistent
-        bf16=True,  # Keep fp16 if needed for memory/speed consistency
+        output_dir="./baseline_eval_temp",
+        per_device_eval_batch_size=1,
+        bf16=True,
     )
 
     baseline_trainer = Trainer(
@@ -264,22 +319,17 @@ def main():
         args=baseline_eval_args,
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
-        data_collator=data_collator
+        data_collator=data_collator,
     )
 
     print("\n=== Baseline model evaluation in chunks ===")
-    baseline_metrics = evaluate_in_chunks(baseline_trainer, tokenized_subset, chunk_size=10, save_outputs_path="baseline_outputs.json", tokenizer=tokenizer, raw_dataset=raw_subset)
+    baseline_metrics = evaluate_in_chunks(baseline_trainer, tokenized_subset, chunk_size=5, save_outputs_path="baseline_outputs.json", tokenizer=tokenizer, raw_dataset=raw_subset)
     avg_baseline_metrics = average_metrics(baseline_metrics)
     print("Average Baseline Metrics:", avg_baseline_metrics)
     save_metrics_to_file(avg_baseline_metrics, "combined_baseline_metrics.json")
     log_gpu()
 
-
-
     wandb.finish()
-
-
-
 
 if __name__ == "__main__":
     main()
