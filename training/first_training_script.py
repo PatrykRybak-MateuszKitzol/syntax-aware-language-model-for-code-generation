@@ -132,7 +132,7 @@ def main():
 
 
     # === DATA PREPARATION & MODEL LOADING ===
-    dataset = load_dataset("json", data_files="docstring_and_code.jsonl", split="train[:3%]")
+    dataset = load_dataset("json", data_files="docstring_and_code.jsonl", split="train[:15%]")
     split_dataset = dataset.train_test_split(test_size=0.2, seed=42)
     test_valid_split = split_dataset["test"].train_test_split(test_size=0.5, seed=42)
     dataset_dict = {
@@ -197,16 +197,16 @@ def main():
         per_device_eval_batch_size=4,
         eval_accumulation_steps=32,
         output_dir="./t5-base-doc2code-checkpoints",
-        per_device_train_batch_size=8, # currently the best combo I found so far for RTX5070Ti
+        per_device_train_batch_size=4, # currently the best combo I found so far for RTX5070Ti
         gradient_accumulation_steps=1, # currently the best combo I found so far for RTX5070Ti
-        num_train_epochs=1, #later on to be changed to 3 - now is 1 because it's 3 times faster
+        num_train_epochs=3, #later on to be changed to 3 - now is 1 because it's 3 times faster
         learning_rate=5e-5, #common default for T5
         weight_decay=0.01, #L2 regularization
         eval_steps=500, #validation after each 500 steps
         save_steps=500, #checkpoint every 500 steps
         logging_steps=100, #logging loss and learning rata each 100 steps
         save_total_limit=2, #only last 2 checkpoints saved during training
-        fp16=True, #16-bit floating point numbers (FP16) instead of (FP32) - 50% less VRAM
+        bf16=True, #16-bit floating point numbers (FP16) instead of (FP32) - 50% less VRAM
         report_to="wandb",
         run_name=RUN_NAME,
     )
@@ -230,7 +230,7 @@ def main():
     torch.cuda.empty_cache()
     log_gpu()
 
-    raw_subset = dataset_dict["test"].select(range(30))
+    raw_subset = dataset_dict["test"].select(range(50))
     tokenized_subset = raw_subset.map(preprocess, batched=True, remove_columns=raw_subset.column_names)
 
     # === EVALUATION OF FINE-TUNED MODEL===
@@ -256,7 +256,7 @@ def main():
     baseline_eval_args = TrainingArguments(
         output_dir="./baseline_eval_temp",  # Temporary directory for evaluation outputs (if any)
         per_device_eval_batch_size=1,  # Keep evaluation batch size consistent
-        fp16=True,  # Keep fp16 if needed for memory/speed consistency
+        bf16=True,  # Keep fp16 if needed for memory/speed consistency
     )
 
     baseline_trainer = Trainer(
@@ -271,7 +271,7 @@ def main():
     baseline_metrics = evaluate_in_chunks(baseline_trainer, tokenized_subset, chunk_size=10, save_outputs_path="baseline_outputs.json", tokenizer=tokenizer, raw_dataset=raw_subset)
     avg_baseline_metrics = average_metrics(baseline_metrics)
     print("Average Baseline Metrics:", avg_baseline_metrics)
-    save_metrics_to_file(avg_baseline_metrics, "baseline_metrics.json")
+    save_metrics_to_file(avg_baseline_metrics, "combined_baseline_metrics.json")
     log_gpu()
 
 
