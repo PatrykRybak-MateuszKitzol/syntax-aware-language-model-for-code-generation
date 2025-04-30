@@ -2,8 +2,8 @@ import os
 
 # === Basic Training Setup ===
 MODEL_NAME = "t5-base"
-TRAIN_SPLIT_PERCENT = 5
-NUM_EPOCHS = 1
+TRAIN_SPLIT_PERCENT = 40
+NUM_EPOCHS = 3
 
 # === Model and Tokenizer ===
 MODEL_NAME = "t5-base"
@@ -15,10 +15,10 @@ MAX_OUTPUT_LENGTH = 512  # Maximum output length that t5-base supports (93% of y
 # === Generation Hyperparameters ===
 GENERATION_ARGS = {
     "max_length": MAX_OUTPUT_LENGTH,
-    "num_beams": 4,
-    "no_repeat_ngram_size": 3,
-    "early_stopping": True,
-    "length_penalty": 0.7,
+    "num_beams": 1,  # You changed this from default
+    "no_repeat_ngram_size": 0,  # You added this
+    "early_stopping": True,  # You added this
+    "length_penalty": 1,
 }
 
 # === Output directories ===
@@ -33,9 +33,8 @@ FINETUNED_MODEL_DIR = CHECKPOINTS_DIR
 PROJECT_NAME = "syntax-aware-language-model-for-code-generation"
 RUN_NAME = f"{MODEL_NAME}-split{TRAIN_SPLIT_PERCENT}-epochs{NUM_EPOCHS}-doc2code-run"
 
-# === Dataset path and split===
+# === Dataset path ===
 DATASET_PATH = "docstring_and_code.jsonl"
-TRAIN_SPLIT_PERCENT = 1
 
 # === Default random seed ===
 SEED = 42
@@ -59,5 +58,5 @@ TRAINING_ARGS = {
 }
 
 # === Generation Settings ===
-NUM_EXAMPLES_TO_GENERATE = 5  # Number of examples to use from test set
-CHUNK_SIZE = 1  # How many examples to generate at once
+NUM_EXAMPLES_TO_GENERATE = 500  # Number of examples to use from test set
+CHUNK_SIZE = 5  # How many examples to generate at once
