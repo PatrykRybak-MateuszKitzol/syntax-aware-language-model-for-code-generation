@@ -47,6 +47,9 @@ def main():
         remove_columns=raw_test_set.column_names
     )
 
+    os.makedirs(GENERATED_OUTPUTS_DIR, exist_ok=True)
+
+
     # === Generate outputs ===
     print("\n=== Generating outputs with fine-tuned model ===")
     outputs = evaluate_in_chunks(

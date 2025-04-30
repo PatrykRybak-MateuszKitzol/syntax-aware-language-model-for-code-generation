@@ -61,8 +61,10 @@ if __name__ == "__main__":
 
     predictions = load_json(PREDICTIONS_FILE)
 
+    print(PREDICTIONS_FILE)
+
     # Display results
     if metrics:
         display_metrics(metrics, title="Fine-Tuned Model Metrics")
 
-    display_predictions(predictions, title="Fine-Tuned Model Predictions", limit=10)  # Limit to first 10 examples
+    display_predictions(predictions, title="Fine-Tuned Model Predictions", limit=100)  # Limit to first 10 examples

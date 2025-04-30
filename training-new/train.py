@@ -18,7 +18,7 @@ from config import (
     SEED,
     MAX_INPUT_LENGTH,
     MAX_OUTPUT_LENGTH,
-    FINETUNED_MODEL_DIR,
+    CHECKPOINTS_DIR,
     TRAINING_ARGS
 )
 from utils.model_utils import load_model, load_tokenizer, save_model
@@ -73,7 +73,7 @@ def main():
     trainer.train()
 
     # Save fine-tuned model
-    save_model(model, tokenizer, output_dir=FINETUNED_MODEL_DIR)
+    save_model(model, tokenizer, output_dir=CHECKPOINTS_DIR)
 
     # Clean up
     wandb.finish()
