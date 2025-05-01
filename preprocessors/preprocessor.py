@@ -27,8 +27,6 @@ class PreprocessingPipeline:
                 example = preprocessor.process(example)
                 if example is None:
                     return None
-            print(example)
-            print()
             return example
 
         return dataset.map(process, num_proc=1)

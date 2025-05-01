@@ -21,7 +21,7 @@ with open('../../../preprocessed_dataset.json', 'r', encoding='utf-8') as f:
 for example in preprocessed_data:
     code = example["code"]
     try:
-        parsed = pretokenizer.pretokenize(ast.parse(code), _use_dedent=True, _use_semantics=True)
+        parsed = pretokenizer.pretokenize(ast.parse(code))
         example["parsed"] = parsed
     except SyntaxError as e:
         print(f"Syntax error in example {example.get('func_name', '')}: {e}")

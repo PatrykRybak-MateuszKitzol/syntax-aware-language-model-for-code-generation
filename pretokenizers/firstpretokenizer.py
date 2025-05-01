@@ -287,7 +287,7 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
 
     def _function_helper(self, node, fill_suffix):
         self.maybe_newline()
-        def_str = fill_suffix + node.name
+        def_str = fill_suffix + self.tags.SEMANTIC_START + node.name + self.tags.SEMANTIC_END
         self.fill(def_str)
         with self.delimit(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R):
             self.traverse(node.args)
@@ -496,7 +496,7 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
             self.write(self.tags.ELLIPSIS)
         else:
             if node.kind == "u":
-                self.write(self.U)
+                self.write(self.tags.U)
             self._write_constant(node.value)
 
     def visit_List(self, node):
