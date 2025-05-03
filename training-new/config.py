@@ -60,3 +60,7 @@ TRAINING_ARGS = {
 # === Generation Settings ===
 NUM_EXAMPLES_TO_GENERATE = 500  # Number of examples to use from test set
 CHUNK_SIZE = 5  # How many examples to generate at once
+
+# === Trainig methode settings ===
+RUN_SEGEMENTATOR = False
+RUN_CUSTOM_LOSS = True
