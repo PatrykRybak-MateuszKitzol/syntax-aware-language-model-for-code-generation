@@ -12,6 +12,7 @@ import torch
 from transformers import TrainingArguments, Trainer, DataCollatorForSeq2Seq, set_seed
 
 from config import (
+    RUN_CUSTOM_LOSS,
     MODEL_NAME,
     PROJECT_NAME,
     RUN_NAME,
@@ -56,9 +57,7 @@ def main():
     # Not sure about that but just in case
     code_token_ids.append(tokenizer.convert_tokens_to_ids("<pad>")) 
 
-    model = T5WithModeLoss.from_pretrained(
-        MODEL_NAME,
-    )
+    model = load_model(MODEL_NAME, RUN_CUSTOM_LOSS)
     model.resize_token_embeddings(len(tokenizer))
 
     # Preprocess dataset
@@ -76,20 +75,22 @@ def main():
 
     # Training configuration
     training_args = TrainingArguments(**TRAINING_ARGS)
+    trainer_args = {
+        'code_token_ids': code_token_ids,
+        'modelr': model,
+        'args': training_args,
+        'train_dataset': tokenized_dataset["train"],
+        'eval_dataset': tokenized_dataset["validation"],
+        'tokenizer': tokenizer,
+        'data_collator': data_collator,
+        'compute_metrics': lambda p: compute_metrics(p, tokenizer, pretokenizer),
+    }
 
     # Trainer setup
     trainer = CustomT5Trainer(
         semantic_start_id=semantic_start_id,
         semantic_stop_id=semantic_end_id,
         semantic_token_ids=semantic_token_ids,
-        code_token_ids=code_token_ids,
-        model=model,
-        args=training_args,
-        train_dataset=tokenized_dataset["train"],
-        eval_dataset=tokenized_dataset["validation"],
-        tokenizer=tokenizer,
-        data_collator=data_collator,
-        compute_metrics=lambda p: compute_metrics(p, tokenizer, pretokenizer),
     )
 
     # === Train ===

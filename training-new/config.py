@@ -52,3 +52,7 @@ GENERATED_OUTPUTS_DIR = f"{FINETUNED_MODEL_DIR}_generated"
 NUM_EXAMPLES_TO_GENERATE = 5  # Number of examples to use from test set
 CHUNK_SIZE = 1  # How many examples to generate at once
 SAVE_OUTPUTS_PATH = f"{GENERATED_OUTPUTS_DIR}/generated_outputs.json"
+
+# === Trainig methode settings ===
+RUN_SEGEMENTATOR = False
+RUN_CUSTOM_LOSS = True
