@@ -12,6 +12,7 @@ import torch
 from transformers import TrainingArguments, Trainer, DataCollatorForSeq2Seq, set_seed
 
 from config import (
+    RUN_SEGEMENTATOR,
     RUN_CUSTOM_LOSS,
     MODEL_NAME,
     PROJECT_NAME,
@@ -19,7 +20,7 @@ from config import (
     SEED,
     MAX_INPUT_LENGTH,
     MAX_OUTPUT_LENGTH,
-    CHECKPOINTS_DIR,
+    FINETUNED_MODEL_DIR,
     TRAINING_ARGS
 )
 from utils.model_utils import load_model, load_tokenizer, save_model
@@ -75,9 +76,10 @@ def main():
 
     # Training configuration
     training_args = TrainingArguments(**TRAINING_ARGS)
+
+    # Trainer setup
     trainer_args = {
-        'code_token_ids': code_token_ids,
-        'modelr': model,
+        'model': model,
         'args': training_args,
         'train_dataset': tokenized_dataset["train"],
         'eval_dataset': tokenized_dataset["validation"],
@@ -85,19 +87,21 @@ def main():
         'data_collator': data_collator,
         'compute_metrics': lambda p: compute_metrics(p, tokenizer, pretokenizer),
     }
+    if RUN_CUSTOM_LOSS:
+        trainer_args['semantic_start_id'] = semantic_start_id
+        trainer_args['semantic_stop_id'] = semantic_end_id
+        trainer_args['semantic_token_ids'] = semantic_token_ids
+        trainer_args['code_token_ids'] = code_token_ids
 
-    # Trainer setup
-    trainer = CustomT5Trainer(
-        semantic_start_id=semantic_start_id,
-        semantic_stop_id=semantic_end_id,
-        semantic_token_ids=semantic_token_ids,
-    )
+        trainer = CustomT5Trainer(**trainer_args)
+    else:
+        trainer = Trainer(**trainer_args)
 
     # === Train ===
     trainer.train()
 
     # Save fine-tuned model
-    save_model(model, tokenizer, output_dir=CHECKPOINTS_DIR)
+    save_model(model, tokenizer, output_dir=FINETUNED_MODEL_DIR)
 
     # Clean up
     wandb.finish()
