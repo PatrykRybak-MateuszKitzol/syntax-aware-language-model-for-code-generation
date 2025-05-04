@@ -19,9 +19,6 @@ from pathlib import Path
 root = Path().resolve().parent
 sys.path.insert(0, str(root))
 
-from pretokenizers.firstpretokenizer import FirstPretokenizer
-
-
 
 class T5WithModeLoss(T5ForConditionalGeneration):
     """
@@ -145,21 +142,28 @@ class SemanticCodeLogitsMask(LogitsProcessor):
         """
         Analizing this code it is worth remebering that "semantic start" token belongs to code tokens and "semantic stop" token belongs to semantic ones.
         """
-
         batch_size, cur_len = input_ids.shape
         for b in range(batch_size):
-            seq = input_ids[b].tolist()
-            is_semantic = False
-            for tok in seq:
-                if tok == self.semantic_start_id:
+            latest_token_id = input_ids[b][-1].item()
+            
+            # Determine the context based on the latest token
+            if latest_token_id in self.code_token_ids:
+                if latest_token_id == self.semantic_start_id:
                     is_semantic = True
-                if tok == self.semantic_stop_id:
+                else:
                     is_semantic = False
-
+            elif latest_token_id == self.semantic_stop_id:
+                is_semantic = False
+                
+            # Prepare the mask to exclude different different context tokens 
             if is_semantic:
-                for tid in self.code_token_ids:
-                    scores[b, tid] = -inf
+                mask = torch.tensor([i in self.semantic_token_ids for i in range(scores.size(-1))], device=scores.device)
             else:
-                for tid in self.semantic_token_ids:
-                    scores[b, tid] = -inf
+                mask = torch.tensor([i in self.code_token_ids for i in range(scores.size(-1))], device=scores.device)
+
+            scores[b] = torch.where(mask, scores[b], torch.tensor(float("-inf"), device=scores.device))
+            scores[b][0] = -inf
+
+            # Condition the end of the sequence
+            # if cur_len < 10: scores[b][1] = -inf
         return scores

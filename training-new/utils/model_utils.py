@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-root = Path(__file__).resolve().parent.parent
+root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(root))
 
 from training.training_additions import T5WithModeLoss
