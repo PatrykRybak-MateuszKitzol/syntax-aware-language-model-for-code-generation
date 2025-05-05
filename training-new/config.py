@@ -2,32 +2,53 @@ import os
 
 # === Basic Training Setup ===
 MODEL_NAME = "t5-base"
-TRAIN_SPLIT_PERCENT = 40
-NUM_EPOCHS = 3
-
-# === Model and Tokenizer ===
-MODEL_NAME = "t5-base"
+TRAIN_SPLIT_PERCENT = 10
+NUM_EPOCHS = 1
 
 # === Input/Output lengths ===
 MAX_INPUT_LENGTH = 256
 MAX_OUTPUT_LENGTH = 512  # Maximum output length that t5-base supports (93% of your data fits without segmentation)
 
+# === Training method settings ===
+RUN_SEGEMENTATOR = False
+RUN_CUSTOM_LOSS = True
+RUN_LOGITS_PROCESSOR = True # Whether to use the logits processor (SemanticCodeLogitsMask)
+
+# === Input/Output lengths ===
+MAX_INPUT_LENGTH = 256
+MAX_OUTPUT_LENGTH = 512
+
 # === Generation Hyperparameters ===
 GENERATION_ARGS = {
     "max_length": MAX_OUTPUT_LENGTH,
-    "num_beams": 1,  # You changed this from default
-    "no_repeat_ngram_size": 0,  # You added this
-    "early_stopping": True,  # You added this
-    "length_penalty": 1,
+    #"num_beams": 1,
+    #"no_repeat_ngram_size": 0,
+    #"early_stopping": True,
+    #"length_penalty": 1,
 }
 
+
+
 # === Output directories ===
-EXPERIMENT_DIR = f"outputs/{MODEL_NAME}_split{TRAIN_SPLIT_PERCENT}_epochs{NUM_EPOCHS}"
+
+# Flags
+METHOD_FLAGS = f"seg{RUN_SEGEMENTATOR}-loss{RUN_CUSTOM_LOSS}"
+
+# Base experiment name with method flags included
+BASE_NAME = f"{MODEL_NAME}-split{TRAIN_SPLIT_PERCENT}-epochs{NUM_EPOCHS}-{METHOD_FLAGS}"
+
+# Final experiment directory (EXCLUDING generation args)
+EXPERIMENT_DIR = f"outputs/{BASE_NAME}"
 CHECKPOINTS_DIR = os.path.join(EXPERIMENT_DIR, "checkpoints")
-GENERATION_NAME_PART = f"beams{GENERATION_ARGS['num_beams']}_norep{GENERATION_ARGS['no_repeat_ngram_size']}_lenpen{GENERATION_ARGS['length_penalty']}"
-GENERATED_OUTPUTS_DIR = os.path.join(EXPERIMENT_DIR, f"generated-outputs_{GENERATION_NAME_PART}")
+
+# Generation args string (used ONLY in generated outputs dir)
+GEN_ARGS_STRING = "-".join(f"{k}{v}" for k, v in GENERATION_ARGS.items())
+GENERATED_OUTPUTS_DIR = os.path.join(EXPERIMENT_DIR, f"generated-outputs-{GEN_ARGS_STRING}")
+
 SAVE_OUTPUTS_PATH = os.path.join(GENERATED_OUTPUTS_DIR, "generated_outputs.json")
 FINETUNED_MODEL_DIR = CHECKPOINTS_DIR
+
+
 
 # === W&B (Weights & Biases) project tracking ===
 PROJECT_NAME = "syntax-aware-language-model-for-code-generation"
@@ -60,8 +81,3 @@ TRAINING_ARGS = {
 # === Generation Settings ===
 NUM_EXAMPLES_TO_GENERATE = 500  # Number of examples to use from test set
 CHUNK_SIZE = 5  # How many examples to generate at once
-RUN_LOGITS_PROCESSOR = True # Whether to use the logits processor (SemanticCodeLogitsMask)
-
-# === Trainig methode settings ===
-RUN_SEGEMENTATOR = False
-RUN_CUSTOM_LOSS = True

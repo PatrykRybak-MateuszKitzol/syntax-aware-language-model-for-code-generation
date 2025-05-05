@@ -38,6 +38,7 @@ def main():
 
     # Load fine-tuned model and tokenizer
     model = load_model(FINETUNED_MODEL_DIR, RUN_CUSTOM_LOSS).to(device)
+    
     tokenizer = load_tokenizer(FINETUNED_MODEL_DIR)
 
     pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
