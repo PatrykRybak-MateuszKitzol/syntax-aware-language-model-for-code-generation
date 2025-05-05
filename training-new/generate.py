@@ -31,7 +31,7 @@ def main():
     print(f"Using device: {device}")
 
     # Load fine-tuned model and tokenizer
-    model = load_model(FINETUNED_MODEL_DIR).to(device)
+    model = load_model(FINETUNED_MODEL_DIR, run_custon_loss=True).to(device)
     tokenizer = load_tokenizer(FINETUNED_MODEL_DIR)
 
     pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
