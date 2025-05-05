@@ -12,6 +12,7 @@ MAX_OUTPUT_LENGTH = 512  # Maximum output length that t5-base supports (93% of y
 # === Training method settings ===
 RUN_SEGEMENTATOR = False
 RUN_CUSTOM_LOSS = True
+RUN_LOGITS_PROCESSOR = True # Whether to use the logits processor (SemanticCodeLogitsMask)
 
 # === Input/Output lengths ===
 MAX_INPUT_LENGTH = 256

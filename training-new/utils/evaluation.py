@@ -21,6 +21,7 @@ def evaluate_in_chunks(
     pretokenizer=None,
     max_input_length=256,
     generation_args=None,
+    logits_processor=None
 ):
     """
     Evaluate the model in chunks, generating outputs. Expects generation_args to be passed explicitly.
@@ -54,10 +55,12 @@ def evaluate_in_chunks(
         with torch.no_grad():
             outputs = model.generate(
                 **model_inputs,
-                **generation_args
+                **generation_args,
+                output_scores=True,
+                return_dict_in_generate=True,
+                logits_processor=logits_processor,
             )
-
-        decoded_preds = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        decoded_preds = tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
 
         for i in range(len(inputs)):
             all_outputs.append({

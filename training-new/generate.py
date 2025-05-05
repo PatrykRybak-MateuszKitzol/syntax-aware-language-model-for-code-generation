@@ -6,13 +6,18 @@ root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
 import torch
+import os
 import gc
 import json
+
+from transformers import LogitsProcessorList
 
 from config import (
     FINETUNED_MODEL_DIR,
     MAX_INPUT_LENGTH,
     MAX_OUTPUT_LENGTH,
+    RUN_CUSTOM_LOSS,
+    RUN_LOGITS_PROCESSOR
 )
 from utils.model_utils import load_model, load_tokenizer
 from utils.data_loader import load_and_split_dataset
@@ -22,16 +27,18 @@ from utils.gpu_logger import log_gpu
 from pretokenizers.firstpretokenizer import FirstPretokenizer
 from config import GENERATION_ARGS, CHUNK_SIZE, SAVE_OUTPUTS_PATH, NUM_EXAMPLES_TO_GENERATE, GENERATED_OUTPUTS_DIR
 from utils.metrics import compute_metrics, save_metrics_to_file
-import os
+from training.training_additions import SemanticCodeLogitsMask
 
 
 def main():
     # Setup
+    os.makedirs(GENERATED_OUTPUTS_DIR, exist_ok=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
     # Load fine-tuned model and tokenizer
-    model = load_model(FINETUNED_MODEL_DIR, run_custon_loss=True).to(device)
+    model = load_model(FINETUNED_MODEL_DIR, RUN_CUSTOM_LOSS).to(device)
+    
     tokenizer = load_tokenizer(FINETUNED_MODEL_DIR)
 
     pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
@@ -47,8 +54,28 @@ def main():
         remove_columns=raw_test_set.column_names
     )
 
-    os.makedirs(GENERATED_OUTPUTS_DIR, exist_ok=True)
+    # Set logits processor
+    logits_processor = None
+    if RUN_LOGITS_PROCESSOR:
+        semantic_token_ids = [i for i in range(tokenizer.vocab_size) if i not in tokenizer.all_special_ids]
+        tags = [v for k, v in pretokenizer.tags.__dict__.items() if not k.startswith("_")]
+        tokenizer.add_tokens(tags)
+        code_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in tags]
+        semantic_start_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_START)
+        semantic_end_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_END)
+        semantic_token_ids.append(semantic_end_id)
+        code_token_ids.remove(semantic_end_id)
+        code_token_ids.append(tokenizer.convert_tokens_to_ids("</s>"))
+        code_token_ids.append(tokenizer.convert_tokens_to_ids("<pad>")) 
 
+        logits_processor = LogitsProcessorList([
+            SemanticCodeLogitsMask(
+                semantic_token_ids=semantic_token_ids,
+                code_token_ids=code_token_ids,
+                semantic_start_id=semantic_start_id,
+                semantic_stop_id=semantic_end_id
+            )
+        ])
 
     # === Generate outputs ===
     print("\n=== Generating outputs with fine-tuned model ===")
@@ -62,6 +89,7 @@ def main():
         pretokenizer=pretokenizer,
         max_input_length=MAX_INPUT_LENGTH,
         generation_args=GENERATION_ARGS,
+        logits_processor=logits_processor
     )
 
     # === Compute real metrics ===
