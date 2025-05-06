@@ -5,7 +5,7 @@
 import sys
 from pathlib import Path
 
-root = Path().resolve().parent
+root = Path().resolve().parent.parent
 sys.path.insert(0, str(root))
 
 from typing import List

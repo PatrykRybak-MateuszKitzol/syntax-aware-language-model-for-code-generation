@@ -1,23 +1,15 @@
 import torch
 import torch.nn as nn
+
 from math import inf
-from transformers import (
-    T5Tokenizer,
-    T5ForConditionalGeneration,
-    Trainer,
-    TrainingArguments,
-    TrainerCallback,
-    LogitsProcessor,
-    LogitsProcessorList
-)
 from transformers import Trainer
 from transformers import T5ForConditionalGeneration
-
-import sys
 from pathlib import Path
-
-root = Path().resolve().parent
-sys.path.insert(0, str(root))
+from transformers import (
+    T5ForConditionalGeneration,
+    Trainer,
+    LogitsProcessor,
+)
 
 
 class T5WithModeLoss(T5ForConditionalGeneration):

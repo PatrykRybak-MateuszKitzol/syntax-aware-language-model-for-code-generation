@@ -1,15 +1,15 @@
 import sys
-from pathlib import Path
-
-# Add project root to sys.path
-root = Path(__file__).resolve().parent.parent
-sys.path.append(str(root))
-
 import torch
 import gc
 import json
-from utils.gpu_logger import log_gpu
 import os
+
+from pathlib import Path
+
+root = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root))
+
+from model_operations.utils.gpu_logger import log_gpu
 
 def evaluate_in_chunks(
     model,

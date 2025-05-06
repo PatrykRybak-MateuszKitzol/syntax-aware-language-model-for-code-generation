@@ -1,9 +1,9 @@
 import sys
-from pathlib import Path
 import json
 import os
 
-# Add project root to sys.path
+from pathlib import Path
+
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 

@@ -5,8 +5,8 @@ import re
 from typing import List, Tuple, Optional
 from core.segmentator import Segmentator, SegmentatorContract
 
-from pretokenizers.firstpretokenizer import FirstPretokenizer
-from utils.pretty_printer import pretty_print_span, pretty_print_spans, pretty_print_tokens
+from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
+from data_processing.utils.pretty_printer import pretty_print_span, pretty_print_spans, pretty_print_tokens
 
 class UltimateSegmentator(Segmentator):
 

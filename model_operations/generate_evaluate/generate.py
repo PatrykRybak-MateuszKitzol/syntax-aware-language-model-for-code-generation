@@ -1,38 +1,41 @@
 import sys
-from pathlib import Path
-
-# Add project root to sys.path
-root = Path(__file__).resolve().parent
-sys.path.append(str(root))
-
 import torch
 import os
 import gc
-import json
 
+from pathlib import Path
 from transformers import LogitsProcessorList
+
+root = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(root))
 
 from config import (
     FINETUNED_MODEL_DIR,
     MAX_INPUT_LENGTH,
     MAX_OUTPUT_LENGTH,
     RUN_CUSTOM_LOSS,
-    RUN_LOGITS_PROCESSOR
+    RUN_LOGITS_PROCESSOR,
+    GENERATION_ARGS,
+    CHUNK_SIZE,
+    SAVE_OUTPUTS_PATH,
+    NUM_EXAMPLES_TO_GENERATE,
+    GENERATED_OUTPUTS_DIR
 )
-from utils.model_utils import load_model, load_tokenizer
-from utils.data_loader import load_and_split_dataset
-from utils.data_preparation import preprocess
-from utils.evaluation import evaluate_in_chunks
-from utils.gpu_logger import log_gpu
-from pretokenizers.firstpretokenizer import FirstPretokenizer
-from config import GENERATION_ARGS, CHUNK_SIZE, SAVE_OUTPUTS_PATH, NUM_EXAMPLES_TO_GENERATE, GENERATED_OUTPUTS_DIR
-from utils.metrics import compute_metrics, save_metrics_to_file
-from training.training_additions import SemanticCodeLogitsMask
+
+from model_operations.generate_evaluate.evaluation import evaluate_in_chunks
+from model_operations.generate_evaluate.metrics import compute_metrics, save_metrics_to_file
+from model_operations.training.training_additions import SemanticCodeLogitsMask
+from model_operations.utils.gpu_logger import log_gpu
+from model_operations.utils.model_utils import load_model, load_tokenizer
+
+from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
+from data_processing.utils.data_loader import load_and_split_dataset
+from data_processing.utils.data_preparation import preprocess
 
 
 def main():
     # Setup
-    os.makedirs(GENERATED_OUTPUTS_DIR, exist_ok=True)
+    os.makedirs(, exist_ok=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
@@ -113,7 +116,6 @@ def main():
     torch.cuda.empty_cache()
     gc.collect()
     log_gpu()
-
 
 
 if __name__ == "__main__":
