@@ -35,16 +35,16 @@ from data_processing.utils.data_preparation import preprocess
 
 def main():
     # Setup
-    os.makedirs(, exist_ok=True)
+    os.makedirs(GENERATED_OUTPUTS_DIR, exist_ok=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
     # Load fine-tuned model and tokenizer
     model = load_model(FINETUNED_MODEL_DIR, RUN_CUSTOM_LOSS).to(device)
     
-    tokenizer = load_tokenizer(FINETUNED_MODEL_DIR)
-
     pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
+
+    tokenizer, specifics = load_tokenizer(FINETUNED_MODEL_DIR, pretokenizer)
 
     # Load test dataset
     dataset_dict = load_and_split_dataset()
@@ -59,17 +59,8 @@ def main():
 
     # Set logits processor
     logits_processor = None
-    if RUN_LOGITS_PROCESSOR:
-        semantic_token_ids = [i for i in range(tokenizer.vocab_size) if i not in tokenizer.all_special_ids]
-        tags = [v for k, v in pretokenizer.tags.__dict__.items() if not k.startswith("_")]
-        tokenizer.add_tokens(tags)
-        code_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in tags]
-        semantic_start_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_START)
-        semantic_end_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_END)
-        semantic_token_ids.append(semantic_end_id)
-        code_token_ids.remove(semantic_end_id)
-        code_token_ids.append(tokenizer.convert_tokens_to_ids("</s>"))
-        code_token_ids.append(tokenizer.convert_tokens_to_ids("<pad>")) 
+    if RUN_LOGITS_PROCESSOR and specifics:
+        semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids = specifics
 
         logits_processor = LogitsProcessorList([
             SemanticCodeLogitsMask(

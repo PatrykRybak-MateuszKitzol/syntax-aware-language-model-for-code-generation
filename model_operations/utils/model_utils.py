@@ -17,10 +17,14 @@ def load_tokenizer(model_path_or_name: str, pretokenizer: Union[FirstPretokenize
     """
     tokenizer = AutoTokenizer.from_pretrained(model_path_or_name)
 
-    if Path(model_path_or_name).exists() and pretokenizer:
-        semantic_token_ids = [i for i in range(tokenizer.vocab_size) if i not in tokenizer.all_special_ids]
+    if pretokenizer:
         tags = [v for k, v in pretokenizer.tags.__dict__.items() if not k.startswith("_")]
-        tokenizer.add_tokens(tags)
+        semantic_token_ids = [i for i in range(tokenizer.vocab_size) if i not in tokenizer.all_special_ids]
+
+        # Adds special tokens to the tokenizer
+        if not Path(model_path_or_name).exists(): # model from a hub - not memory (outputs)
+            tokenizer.add_tokens(tags)
+
         code_token_ids = [tokenizer.convert_tokens_to_ids(tok) for tok in tags]
         semantic_start_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_START)
         semantic_end_id = tokenizer.convert_tokens_to_ids(pretokenizer.tags.SEMANTIC_END)
@@ -29,7 +33,9 @@ def load_tokenizer(model_path_or_name: str, pretokenizer: Union[FirstPretokenize
         code_token_ids.append(tokenizer.convert_tokens_to_ids("</s>"))
         code_token_ids.append(tokenizer.convert_tokens_to_ids("<pad>")) 
 
-    return tokenizer, (semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids)
+        return tokenizer, (semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids)
+
+    return tokenizer, None
 
 def load_model(model_path_or_name: str, run_custon_loss: bool):
     """

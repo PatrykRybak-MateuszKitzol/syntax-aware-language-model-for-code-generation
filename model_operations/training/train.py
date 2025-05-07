@@ -6,7 +6,7 @@ import torch
 from pathlib import Path
 from transformers import TrainingArguments, Trainer, DataCollatorForSeq2Seq, set_seed
 
-root = Path(__file__).resolve().parent.parent
+root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(root))
 
 from config import (
@@ -43,7 +43,8 @@ def main():
 
     # Load and prepare model with tokenizer
     tokenizer, specifics = load_tokenizer(MODEL_NAME, pretokenizer)
-    semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids = specifics
+    if specifics:
+        semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids = specifics
 
     model = load_model(MODEL_NAME, RUN_CUSTOM_LOSS)
     model.resize_token_embeddings(len(tokenizer))
@@ -74,7 +75,7 @@ def main():
         'data_collator': data_collator,
         'compute_metrics': lambda p: compute_metrics(p, tokenizer, pretokenizer),
     }
-    if RUN_CUSTOM_LOSS:
+    if RUN_CUSTOM_LOSS and specifics:
         trainer_args['semantic_start_id'] = semantic_start_id
         trainer_args['semantic_stop_id'] = semantic_end_id
         trainer_args['semantic_token_ids'] = semantic_token_ids
