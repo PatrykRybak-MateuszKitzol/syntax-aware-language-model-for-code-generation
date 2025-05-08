@@ -10,6 +10,7 @@ sys.path.append(str(root))
 
 from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
 from model_operations.training.training_additions import T5WithModeLoss
+from transformers import AutoModelForCausalLM
 
 def load_tokenizer(model_path_or_name: str, pretokenizer: Union[FirstPretokenizer, None] = None):
     """
@@ -37,14 +38,31 @@ def load_tokenizer(model_path_or_name: str, pretokenizer: Union[FirstPretokenize
 
     return tokenizer, None
 
-def load_model(model_path_or_name: str, run_custon_loss: bool):
+
+def load_model(model_path_or_name: str, run_custom_loss: bool = False):
     """
-    Load a model from a model name (e.g., "t5-base") or a directory path (e.g., "outputs/finetuned_model").
+    Load a model from a model name (e.g., "t5-base", "gpt2-xl") or a directory path.
+
+    :param model_path_or_name: Model name or path to the model directory.
+    :param run_custom_loss: If True and the model is T5-based, loads T5WithModeLoss instead of the standard model.
+    :return: Loaded model instance.
     """
-    if run_custon_loss:
-        return T5WithModeLoss.from_pretrained(model_path_or_name)
+    # Dynamically select the model type based on the name
+    print(model_path_or_name)
+
+    if "t5" in model_path_or_name.lower():
+        if run_custom_loss:
+            print(f"Loading custom T5WithModeLoss for {model_path_or_name}")
+            return T5WithModeLoss.from_pretrained(model_path_or_name)
+        else:
+            print(f"Loading standard T5 model for {model_path_or_name}")
+            return AutoModelForSeq2SeqLM.from_pretrained(model_path_or_name)
+    elif model_path_or_name.lower().startswith("gpt2"):
+        print(f"Loading GPT2LMHeadModel for {model_path_or_name}")
+        from transformers import GPT2LMHeadModel
+        return GPT2LMHeadModel.from_pretrained(model_path_or_name)
     else:
-        return AutoModelForSeq2SeqLM.from_pretrained(model_path_or_name)
+        raise ValueError(f"Unsupported model type: {model_path_or_name}")
 
 def save_model(model, tokenizer, output_dir):
     """

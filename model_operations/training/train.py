@@ -2,6 +2,7 @@ import sys
 import wandb
 import gc
 import torch
+import os
 
 from pathlib import Path
 from transformers import TrainingArguments, Trainer, DataCollatorForSeq2Seq, set_seed
@@ -18,7 +19,11 @@ from config import (
     MAX_INPUT_LENGTH,
     MAX_OUTPUT_LENGTH,
     FINETUNED_MODEL_DIR,
-    TRAINING_ARGS
+    TRAINING_ARGS,
+    TRAIN_SPLIT_DIR,
+    VALIDATION_SPLIT_DIR,
+    TEST_SPLIT_DIR,
+    FINETUNING
 )
 
 from model_operations.training.training_additions import T5WithModeLoss, CustomT5Trainer
@@ -41,10 +46,25 @@ def main():
     # Load dataset
     dataset_dict = load_and_split_dataset()
 
+    # Ensure the directories exist
+    os.makedirs(TRAIN_SPLIT_DIR, exist_ok=True)
+    os.makedirs(VALIDATION_SPLIT_DIR, exist_ok=True)
+    os.makedirs(TEST_SPLIT_DIR, exist_ok=True)
+
+    # Save the datasets to disk
+    dataset_dict["train"].save_to_disk(TRAIN_SPLIT_DIR)
+    dataset_dict["validation"].save_to_disk(VALIDATION_SPLIT_DIR)
+    dataset_dict["test"].save_to_disk(TEST_SPLIT_DIR)
+
+    if not FINETUNING:
+        sys.exit(0)
+
     # Load and prepare model with tokenizer
-    tokenizer, specifics = load_tokenizer(MODEL_NAME, pretokenizer)
-    if specifics:
+    if RUN_CUSTOM_LOSS:
+        tokenizer, specifics = load_tokenizer(MODEL_NAME, pretokenizer)
         semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids = specifics
+    else:
+        tokenizer, _ = load_tokenizer(MODEL_NAME)
 
     model = load_model(MODEL_NAME, RUN_CUSTOM_LOSS)
     model.resize_token_embeddings(len(tokenizer))

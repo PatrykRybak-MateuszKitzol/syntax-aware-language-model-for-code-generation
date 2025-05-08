@@ -2,8 +2,9 @@ import os
 
 # === Basic Training Setup ===
 MODEL_NAME = "t5-base"
-TRAIN_SPLIT_PERCENT = 10
+TRAIN_SPLIT_PERCENT = 1
 NUM_EPOCHS = 1
+FINETUNING = True
 
 # === Input/Output lengths ===
 MAX_INPUT_LENGTH = 256
@@ -11,12 +12,8 @@ MAX_OUTPUT_LENGTH = 512  # Maximum output length that t5-base supports (93% of y
 
 # === Training method settings ===
 RUN_SEGEMENTATOR = False
-RUN_CUSTOM_LOSS = True
-RUN_LOGITS_PROCESSOR = True # Whether to use the logits processor (SemanticCodeLogitsMask)
-
-# === Input/Output lengths ===
-MAX_INPUT_LENGTH = 256
-MAX_OUTPUT_LENGTH = 512
+RUN_CUSTOM_LOSS = False
+RUN_LOGITS_PROCESSOR = False # Whether to use the logits processor (SemanticCodeLogitsMask)
 
 # === Generation Hyperparameters ===
 GENERATION_ARGS = {
@@ -30,23 +27,36 @@ GENERATION_ARGS = {
 
 
 # === Output directories ===
+# Get the root of the project
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 
-# Flags
-METHOD_FLAGS = f"seg{RUN_SEGEMENTATOR}-loss{RUN_CUSTOM_LOSS}"
+METHOD_FLAGS = f"loss{RUN_CUSTOM_LOSS}"
 
 # Base experiment name with method flags included
-BASE_NAME = f"{MODEL_NAME}-split{TRAIN_SPLIT_PERCENT}-epochs{NUM_EPOCHS}-{METHOD_FLAGS}"
+if FINETUNING:
+    BASE_NAME = f"{MODEL_NAME}-split{TRAIN_SPLIT_PERCENT}-epochs{NUM_EPOCHS}-{METHOD_FLAGS}"
+else:
+    BASE_NAME = MODEL_NAME
 
 # Final experiment directory (EXCLUDING generation args)
-EXPERIMENT_DIR = f"outputs/{BASE_NAME}"
+EXPERIMENT_DIR = os.path.join(PROJECT_ROOT, "model_operations", "training", "models", BASE_NAME)
 CHECKPOINTS_DIR = os.path.join(EXPERIMENT_DIR, "checkpoints")
 
 # Generation args string (used ONLY in generated outputs dir)
 GEN_ARGS_STRING = "-".join(f"{k}{v}" for k, v in GENERATION_ARGS.items())
-GENERATED_OUTPUTS_DIR = os.path.join(EXPERIMENT_DIR, f"generated-outputs-{GEN_ARGS_STRING}")
+GENERATED_OUTPUTS_DIR = os.path.join(PROJECT_ROOT, "model_operations", "generate_evaluate", "generations", BASE_NAME, f"{GEN_ARGS_STRING}_logits{RUN_LOGITS_PROCESSOR}")
 
 SAVE_OUTPUTS_PATH = os.path.join(GENERATED_OUTPUTS_DIR, "generated_outputs.json")
 FINETUNED_MODEL_DIR = CHECKPOINTS_DIR
+
+# New folder to save the dataset splits
+SPLITTED_DATASET_DIR = os.path.join(EXPERIMENT_DIR, "splitted_dataset")
+TRAIN_SPLIT_DIR = os.path.join(SPLITTED_DATASET_DIR, "train_split")
+VALIDATION_SPLIT_DIR = os.path.join(SPLITTED_DATASET_DIR, "validation_split")
+TEST_SPLIT_DIR = os.path.join(SPLITTED_DATASET_DIR, "test_split")
+
+
+print(EXPERIMENT_DIR)
 
 
 
@@ -79,5 +89,5 @@ TRAINING_ARGS = {
 }
 
 # === Generation Settings ===
-NUM_EXAMPLES_TO_GENERATE = 500  # Number of examples to use from test set
+NUM_EXAMPLES_TO_GENERATE = 5  # Number of examples to use from test set
 CHUNK_SIZE = 5  # How many examples to generate at once

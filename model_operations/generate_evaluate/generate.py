@@ -19,7 +19,10 @@ from config import (
     CHUNK_SIZE,
     SAVE_OUTPUTS_PATH,
     NUM_EXAMPLES_TO_GENERATE,
-    GENERATED_OUTPUTS_DIR
+    GENERATED_OUTPUTS_DIR,
+    TEST_SPLIT_DIR,
+    FINETUNING,
+    MODEL_NAME
 )
 
 from model_operations.generate_evaluate.evaluation import evaluate_in_chunks
@@ -31,6 +34,7 @@ from model_operations.utils.model_utils import load_model, load_tokenizer
 from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
 from data_processing.utils.data_loader import load_and_split_dataset
 from data_processing.utils.data_preparation import preprocess
+from datasets import Dataset
 
 
 def main():
@@ -39,16 +43,22 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    # Load fine-tuned model and tokenizer
-    model = load_model(FINETUNED_MODEL_DIR, RUN_CUSTOM_LOSS).to(device)
-    
     pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
 
-    tokenizer, specifics = load_tokenizer(FINETUNED_MODEL_DIR, pretokenizer)
+    # Load model and tokenizer
+    if FINETUNING:
+        model = load_model(FINETUNED_MODEL_DIR, RUN_CUSTOM_LOSS).to(device)
+        tokenizer, specifics = load_tokenizer(FINETUNED_MODEL_DIR, pretokenizer)
+    else:
+        model = load_model(MODEL_NAME, False).to(device)
+        tokenizer, _ = load_tokenizer(MODEL_NAME)
+        if tokenizer.pad_token is None:
+            print("⚠️ GPT-2 tokenizer does not have a pad token. Adding '<pad>' as padding token.")
+            tokenizer.add_special_tokens({'pad_token': '<pad>'})
+            model.resize_token_embeddings(len(tokenizer))
 
     # Load test dataset
-    dataset_dict = load_and_split_dataset()
-    raw_test_set = dataset_dict["test"].select(range(NUM_EXAMPLES_TO_GENERATE))
+    raw_test_set = Dataset.load_from_disk(TEST_SPLIT_DIR).select(range(NUM_EXAMPLES_TO_GENERATE))
 
     # Preprocess test dataset
     tokenized_test_set = raw_test_set.map(
