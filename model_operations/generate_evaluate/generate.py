@@ -19,7 +19,8 @@ from config import (
     CHUNK_SIZE,
     SAVE_OUTPUTS_PATH,
     NUM_EXAMPLES_TO_GENERATE,
-    GENERATED_OUTPUTS_DIR
+    GENERATED_OUTPUTS_DIR,
+    TEST_SPLIT_DIR
 )
 
 from model_operations.generate_evaluate.evaluation import evaluate_in_chunks
@@ -31,6 +32,7 @@ from model_operations.utils.model_utils import load_model, load_tokenizer
 from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
 from data_processing.utils.data_loader import load_and_split_dataset
 from data_processing.utils.data_preparation import preprocess
+from datasets import Dataset
 
 
 def main():
@@ -47,8 +49,7 @@ def main():
     tokenizer, specifics = load_tokenizer(FINETUNED_MODEL_DIR, pretokenizer)
 
     # Load test dataset
-    dataset_dict = load_and_split_dataset()
-    raw_test_set = dataset_dict["test"].select(range(NUM_EXAMPLES_TO_GENERATE))
+    raw_test_set = Dataset.load_from_disk(TEST_SPLIT_DIR).select(range(NUM_EXAMPLES_TO_GENERATE))
 
     # Preprocess test dataset
     tokenized_test_set = raw_test_set.map(

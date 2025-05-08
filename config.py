@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 # === Basic Training Setup ===
 MODEL_NAME = "t5-base"
@@ -13,7 +12,7 @@ MAX_OUTPUT_LENGTH = 512  # Maximum output length that t5-base supports (93% of y
 # === Training method settings ===
 RUN_SEGEMENTATOR = False
 RUN_CUSTOM_LOSS = False
-RUN_LOGITS_PROCESSOR = True # Whether to use the logits processor (SemanticCodeLogitsMask)
+RUN_LOGITS_PROCESSOR = False # Whether to use the logits processor (SemanticCodeLogitsMask)
 
 # === Generation Hyperparameters ===
 GENERATION_ARGS = {
@@ -46,6 +45,14 @@ GENERATED_OUTPUTS_DIR = os.path.join(PROJECT_ROOT, "model_operations", "generate
 SAVE_OUTPUTS_PATH = os.path.join(GENERATED_OUTPUTS_DIR, "generated_outputs.json")
 FINETUNED_MODEL_DIR = CHECKPOINTS_DIR
 
+# New folder to save the dataset splits
+SPLITTED_DATASET_DIR = os.path.join(EXPERIMENT_DIR, "splitted_dataset")
+TRAIN_SPLIT_DIR = os.path.join(SPLITTED_DATASET_DIR, "train_split")
+VALIDATION_SPLIT_DIR = os.path.join(SPLITTED_DATASET_DIR, "validation_split")
+TEST_SPLIT_DIR = os.path.join(SPLITTED_DATASET_DIR, "test_split")
+
+
+print(EXPERIMENT_DIR)
 
 
 
@@ -78,5 +85,5 @@ TRAINING_ARGS = {
 }
 
 # === Generation Settings ===
-NUM_EXAMPLES_TO_GENERATE = 500  # Number of examples to use from test set
+NUM_EXAMPLES_TO_GENERATE = 5  # Number of examples to use from test set
 CHUNK_SIZE = 5  # How many examples to generate at once
