@@ -4,7 +4,7 @@ import os
 import gc
 
 from pathlib import Path
-from transformers import LogitsProcessorList
+from transformers import LogitsProcessorList, NoBadWordsLogitsProcessor
 
 root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(root))
@@ -22,7 +22,8 @@ from config import (
     GENERATED_OUTPUTS_DIR,
     TEST_SPLIT_DIR,
     FINETUNING,
-    MODEL_NAME
+    MODEL_NAME,
+    USE_CUSTOM_EOS
 )
 
 from model_operations.generate_evaluate.evaluation import evaluate_in_chunks
@@ -48,10 +49,10 @@ def main():
     # Load model and tokenizer
     if FINETUNING:
         model = load_model(FINETUNED_MODEL_DIR, RUN_CUSTOM_LOSS).to(device)
-        tokenizer, specifics = load_tokenizer(FINETUNED_MODEL_DIR, pretokenizer)
+        tokenizer, specifics = load_tokenizer(FINETUNED_MODEL_DIR, USE_CUSTOM_EOS, pretokenizer)
     else:
         model = load_model(MODEL_NAME, False).to(device)
-        tokenizer, _ = load_tokenizer(MODEL_NAME)
+        tokenizer, _ = load_tokenizer(MODEL_NAME, USE_CUSTOM_EOS)
         if tokenizer.pad_token is None:
             print("⚠️ GPT-2 tokenizer does not have a pad token. Adding '<pad>' as padding token.")
             tokenizer.add_special_tokens({'pad_token': '<pad>'})
@@ -78,8 +79,8 @@ def main():
                 code_token_ids=code_token_ids,
                 semantic_start_id=semantic_start_id,
                 semantic_stop_id=semantic_end_id
-            )
-        ])
+            ) # below is strictly for T5
+        ] + [NoBadWordsLogitsProcessor(tokenizer.convert_tokens_to_ids('</s>'))] if USE_CUSTOM_EOS else [])
 
     # === Generate outputs ===
     print("\n=== Generating outputs with fine-tuned model ===")
