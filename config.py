@@ -4,6 +4,7 @@ import os
 MODEL_NAME = "t5-base"
 TRAIN_SPLIT_PERCENT = 1
 NUM_EPOCHS = 1
+FINETUNING = True
 
 # === Input/Output lengths ===
 MAX_INPUT_LENGTH = 256
@@ -29,10 +30,13 @@ GENERATION_ARGS = {
 # Get the root of the project
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 
-METHOD_FLAGS = f"seg{RUN_SEGEMENTATOR}-loss{RUN_CUSTOM_LOSS}"
+METHOD_FLAGS = f"loss{RUN_CUSTOM_LOSS}"
 
 # Base experiment name with method flags included
-BASE_NAME = f"{MODEL_NAME}-split{TRAIN_SPLIT_PERCENT}-epochs{NUM_EPOCHS}-{METHOD_FLAGS}"
+if FINETUNING:
+    BASE_NAME = f"{MODEL_NAME}-split{TRAIN_SPLIT_PERCENT}-epochs{NUM_EPOCHS}-{METHOD_FLAGS}"
+else:
+    BASE_NAME = MODEL_NAME
 
 # Final experiment directory (EXCLUDING generation args)
 EXPERIMENT_DIR = os.path.join(PROJECT_ROOT, "model_operations", "training", "models", BASE_NAME)
@@ -40,7 +44,7 @@ CHECKPOINTS_DIR = os.path.join(EXPERIMENT_DIR, "checkpoints")
 
 # Generation args string (used ONLY in generated outputs dir)
 GEN_ARGS_STRING = "-".join(f"{k}{v}" for k, v in GENERATION_ARGS.items())
-GENERATED_OUTPUTS_DIR = os.path.join(PROJECT_ROOT, "model_operations", "generate_evaluate", "generations", BASE_NAME, f"generated-outputs-{GEN_ARGS_STRING}")
+GENERATED_OUTPUTS_DIR = os.path.join(PROJECT_ROOT, "model_operations", "generate_evaluate", "generations", BASE_NAME, f"{GEN_ARGS_STRING}_logits{RUN_LOGITS_PROCESSOR}")
 
 SAVE_OUTPUTS_PATH = os.path.join(GENERATED_OUTPUTS_DIR, "generated_outputs.json")
 FINETUNED_MODEL_DIR = CHECKPOINTS_DIR

@@ -22,7 +22,8 @@ from config import (
     TRAINING_ARGS,
     TRAIN_SPLIT_DIR,
     VALIDATION_SPLIT_DIR,
-    TEST_SPLIT_DIR
+    TEST_SPLIT_DIR,
+    FINETUNING
 )
 
 from model_operations.training.training_additions import T5WithModeLoss, CustomT5Trainer
@@ -54,6 +55,9 @@ def main():
     dataset_dict["train"].save_to_disk(TRAIN_SPLIT_DIR)
     dataset_dict["validation"].save_to_disk(VALIDATION_SPLIT_DIR)
     dataset_dict["test"].save_to_disk(TEST_SPLIT_DIR)
+
+    if not FINETUNING:
+        sys.exit(0)
 
     # Load and prepare model with tokenizer
     if RUN_CUSTOM_LOSS:
