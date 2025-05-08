@@ -56,9 +56,11 @@ def main():
     dataset_dict["test"].save_to_disk(TEST_SPLIT_DIR)
 
     # Load and prepare model with tokenizer
-    tokenizer, specifics = load_tokenizer(MODEL_NAME, pretokenizer)
-    if specifics:
+    if RUN_CUSTOM_LOSS:
+        tokenizer, specifics = load_tokenizer(MODEL_NAME, pretokenizer)
         semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids = specifics
+    else:
+        tokenizer, _ = load_tokenizer(MODEL_NAME)
 
     model = load_model(MODEL_NAME, RUN_CUSTOM_LOSS)
     model.resize_token_embeddings(len(tokenizer))
