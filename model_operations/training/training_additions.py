@@ -137,7 +137,8 @@ class SemanticCodeLogitsMask(LogitsProcessor):
         batch_size, cur_len = input_ids.shape
         for b in range(batch_size):
             latest_token_id = input_ids[b][-1].item()
-            
+
+            is_semantic = None
             # Determine the context based on the latest token
             if latest_token_id in self.code_token_ids:
                 if latest_token_id == self.semantic_start_id:

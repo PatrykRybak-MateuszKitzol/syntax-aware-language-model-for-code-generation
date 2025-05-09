@@ -80,7 +80,7 @@ def main():
                 semantic_start_id=semantic_start_id,
                 semantic_stop_id=semantic_end_id
             ) # below is strictly for T5
-        ] + [NoBadWordsLogitsProcessor(tokenizer.convert_tokens_to_ids('</s>'))] if USE_CUSTOM_EOS else [])
+        ] + [NoBadWordsLogitsProcessor(bad_words_ids=[[tokenizer.convert_tokens_to_ids('</s>')]])] if USE_CUSTOM_EOS else [])
 
     # === Generate outputs ===
     print("\n=== Generating outputs with fine-tuned model ===")
