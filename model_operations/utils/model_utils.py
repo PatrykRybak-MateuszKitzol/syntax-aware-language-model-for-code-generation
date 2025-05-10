@@ -38,6 +38,8 @@ def load_tokenizer(model_path_or_name: str, use_custom_eos: bool = USE_CUSTOM_EO
         code_token_ids.remove(semantic_end_id)
         code_token_ids.append(tokenizer.convert_tokens_to_ids("</s>"))
         code_token_ids.append(tokenizer.convert_tokens_to_ids("<pad>")) 
+        if use_custom_eos:
+            code_token_ids.append(tokenizer.convert_tokens_to_ids(EOS))
 
         return tokenizer, (semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids)
 

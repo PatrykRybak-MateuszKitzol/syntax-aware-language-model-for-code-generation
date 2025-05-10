@@ -70,7 +70,7 @@ def main():
 
     # Set logits processor
     logits_processor = None
-    if RUN_LOGITS_PROCESSOR and specifics:
+    if RUN_LOGITS_PROCESSOR and specifics and RUN_CUSTOM_LOSS:
         semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids = specifics
 
         logits_processor = LogitsProcessorList([
@@ -81,6 +81,8 @@ def main():
                 semantic_stop_id=semantic_end_id
             ) # below is strictly for T5
         ] + [NoBadWordsLogitsProcessor(bad_words_ids=[[tokenizer.convert_tokens_to_ids('</s>')]])] if USE_CUSTOM_EOS else [])
+
+        print("Logits processor initialized")
 
     # === Generate outputs ===
     print("\n=== Generating outputs with fine-tuned model ===")
