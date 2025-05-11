@@ -23,7 +23,9 @@ from config import (
     TRAIN_SPLIT_DIR,
     VALIDATION_SPLIT_DIR,
     TEST_SPLIT_DIR,
-    FINETUNING
+    FINETUNING,
+    USE_CUSTOM_EOS,
+    EOS,
 )
 
 from model_operations.training.training_additions import T5WithModeLoss, CustomT5Trainer
@@ -61,18 +63,21 @@ def main():
 
     # Load and prepare model with tokenizer
     if RUN_CUSTOM_LOSS:
-        tokenizer, specifics = load_tokenizer(MODEL_NAME, pretokenizer)
+        tokenizer, specifics = load_tokenizer(MODEL_NAME, USE_CUSTOM_EOS, pretokenizer)
         semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids = specifics
     else:
-        tokenizer, _ = load_tokenizer(MODEL_NAME)
+        tokenizer, _ = load_tokenizer(MODEL_NAME, USE_CUSTOM_EOS)
 
     model = load_model(MODEL_NAME, RUN_CUSTOM_LOSS)
     model.resize_token_embeddings(len(tokenizer))
 
+    if USE_CUSTOM_EOS:
+        model.config.eos_token_id = tokenizer.convert_tokens_to_ids(EOS)
+
     # Preprocess dataset
     tokenized_dataset = {
         split: dataset.map(
-            lambda batch: preprocess(batch, tokenizer, MAX_INPUT_LENGTH, MAX_OUTPUT_LENGTH),
+            lambda batch: preprocess(batch, tokenizer, USE_CUSTOM_EOS, MAX_INPUT_LENGTH, MAX_OUTPUT_LENGTH),
             batched=True,
             remove_columns=dataset.column_names
         )

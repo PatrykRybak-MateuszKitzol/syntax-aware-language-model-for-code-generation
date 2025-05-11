@@ -2,7 +2,7 @@ import os
 
 # === Basic Training Setup ===
 MODEL_NAME = "t5-base"
-TRAIN_SPLIT_PERCENT = 1
+TRAIN_SPLIT_PERCENT = 10
 NUM_EPOCHS = 1
 FINETUNING = True
 
@@ -13,13 +13,15 @@ MAX_OUTPUT_LENGTH = 512  # Maximum output length that t5-base supports (93% of y
 # === Training method settings ===
 RUN_SEGEMENTATOR = False
 RUN_CUSTOM_LOSS = False
-RUN_LOGITS_PROCESSOR = False # Whether to use the logits processor (SemanticCodeLogitsMask)
+RUN_LOGITS_PROCESSOR = True # Whether to use the logits processor (SemanticCodeLogitsMask)
+USE_CUSTOM_EOS = True
+EOS = "<custom_eos>"
 
 # === Generation Hyperparameters ===
 GENERATION_ARGS = {
     "max_length": MAX_OUTPUT_LENGTH,
     #"num_beams": 1,
-    #"no_repeat_ngram_size": 0,
+    "no_repeat_ngram_size": 2,
     #"early_stopping": True,
     #"length_penalty": 1,
 }
