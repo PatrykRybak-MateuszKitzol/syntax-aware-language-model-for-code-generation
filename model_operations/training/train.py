@@ -27,6 +27,9 @@ from config import (
     USE_CUSTOM_EOS,
     EOS,
     RUN_MANUAL_GRAD_CLIPPING,
+    HUMANEVAL,
+    DATASET_PATH,
+    HUMANEVAL_DATASET_PATH,
 )
 
 from model_operations.training.training_additions import CustomT5Trainer, GradClippingCallBack
@@ -46,7 +49,10 @@ def main():
     pretokenizer = FirstPretokenizer(_use_dedent=True, _use_semantics=True)
 
     # Load dataset
-    dataset_dict = load_and_split_dataset()
+    if HUMANEVAL:
+        dataset_dict = load_and_split_dataset(HUMANEVAL_DATASET_PATH)
+    else:
+        dataset_dict = load_and_split_dataset(DATASET_PATH)
 
     # Ensure the directories exist
     os.makedirs(TRAIN_SPLIT_DIR, exist_ok=True)
