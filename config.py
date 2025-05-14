@@ -12,10 +12,12 @@ MAX_OUTPUT_LENGTH = 512  # Maximum output length that t5-base supports (93% of y
 
 # === Training method settings ===
 RUN_SEGEMENTATOR = False
-RUN_CUSTOM_LOSS = False
+RUN_CUSTOM_LOSS = True
 RUN_LOGITS_PROCESSOR = True # Whether to use the logits processor (SemanticCodeLogitsMask)
 USE_CUSTOM_EOS = True
 EOS = "<custom_eos>"
+RUN_MANUAL_GRAD_CLIPPING = False
+
 
 # === Generation Hyperparameters ===
 GENERATION_ARGS = {
@@ -67,27 +69,29 @@ PROJECT_NAME = "syntax-aware-language-model-for-code-generation"
 RUN_NAME = f"{MODEL_NAME}-split{TRAIN_SPLIT_PERCENT}-epochs{NUM_EPOCHS}-doc2code-run"
 
 # === Dataset path ===
-DATASET_PATH = "docstring_and_code.jsonl"
+# DATASET_PATH = "docstring_and_code.jsonl"
+DATASET_PATH = "/home/patryk/Documents/syntax-aware-language-model-for-code-generation/docstring_and_code.jsonl"
 
 # === Default random seed ===
 SEED = 42
 
 # === Training Hyperparameters ===
 TRAINING_ARGS = {
-    "per_device_train_batch_size": 4,
-    "per_device_eval_batch_size": 4,
+    "per_device_train_batch_size": 3,
+    "per_device_eval_batch_size": 3,
     "gradient_accumulation_steps": 2,
     "output_dir": CHECKPOINTS_DIR,
     "num_train_epochs": NUM_EPOCHS,
-    "learning_rate": 5e-5,
+    "learning_rate": 1e-5,
     "weight_decay": 0.01,
     "eval_steps": 500,
     "save_steps": 500,
     "save_total_limit": 2,
-    "logging_steps": 100,
-    "bf16": True,
+    "logging_steps": 50,
+    "bf16": True, 
     "report_to": "wandb",
     "run_name": RUN_NAME,
+    "max_grad_norm": 1.0, # totalnie nie dziala nigdzie
 }
 
 # === Generation Settings ===
