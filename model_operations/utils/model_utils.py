@@ -11,12 +11,17 @@ sys.path.append(str(root))
 from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
 from model_operations.training.training_additions import T5WithModeLoss
 from transformers import AutoModelForCausalLM
+from config import USE_CUSTOM_EOS, EOS
 
-def load_tokenizer(model_path_or_name: str, pretokenizer: Union[FirstPretokenizer, None] = None):
+def load_tokenizer(model_path_or_name: str, use_custom_eos: bool = USE_CUSTOM_EOS, pretokenizer: Union[FirstPretokenizer, None] = None):
     """
     Load a tokenizer from a model name (e.g., "t5-base") or a directory path (e.g., "outputs/finetuned_model").
     """
     tokenizer = AutoTokenizer.from_pretrained(model_path_or_name)
+
+    if use_custom_eos:
+        tokenizer.add_special_tokens({'eos_token': EOS})
+        tokenizer.eos_token = EOS
 
     if pretokenizer:
         tags = [v for k, v in pretokenizer.tags.__dict__.items() if not k.startswith("_")]
@@ -33,6 +38,8 @@ def load_tokenizer(model_path_or_name: str, pretokenizer: Union[FirstPretokenize
         code_token_ids.remove(semantic_end_id)
         code_token_ids.append(tokenizer.convert_tokens_to_ids("</s>"))
         code_token_ids.append(tokenizer.convert_tokens_to_ids("<pad>")) 
+        if use_custom_eos:
+            code_token_ids.append(tokenizer.convert_tokens_to_ids(EOS))
 
         return tokenizer, (semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids)
 
