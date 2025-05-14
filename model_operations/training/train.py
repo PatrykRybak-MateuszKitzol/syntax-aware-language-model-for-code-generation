@@ -5,7 +5,7 @@ import torch
 import os
 
 from pathlib import Path
-from transformers import TrainingArguments, Trainer, DataCollatorForSeq2Seq, set_seed
+from transformers import TrainingArguments, Trainer, DataCollatorForSeq2Seq, TrainerCallback, TrainerState, TrainerControl, set_seed
 
 root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(root))
@@ -23,12 +23,14 @@ from config import (
     TRAIN_SPLIT_DIR,
     VALIDATION_SPLIT_DIR,
     TEST_SPLIT_DIR,
-    FINETUNING
+    FINETUNING,
+    USE_CUSTOM_EOS,
+    EOS,
+    RUN_MANUAL_GRAD_CLIPPING,
 )
 
-from model_operations.training.training_additions import T5WithModeLoss, CustomT5Trainer
-from model_operations.generate_evaluate.metrics import compute_metrics, save_metrics_to_file, average_metrics
-from model_operations.generate_evaluate.evaluation import evaluate_in_chunks
+from model_operations.training.training_additions import CustomT5Trainer, GradClippingCallBack
+from model_operations.generate_evaluate.metrics import compute_metrics
 from model_operations.utils.gpu_logger import log_gpu
 from model_operations.utils.model_utils import load_model, load_tokenizer, save_model
 
@@ -85,6 +87,7 @@ def main():
     # Training configuration
     training_args = TrainingArguments(**TRAINING_ARGS)
 
+
     # Trainer setup
     trainer_args = {
         'model': model,
@@ -95,6 +98,8 @@ def main():
         'data_collator': data_collator,
         'compute_metrics': lambda p: compute_metrics(p, tokenizer, pretokenizer),
     }
+    if RUN_MANUAL_GRAD_CLIPPING:
+        trainer_args["callbacks"] = [GradClippingCallBack]
     if RUN_CUSTOM_LOSS and specifics:
         trainer_args['semantic_start_id'] = semantic_start_id
         trainer_args['semantic_stop_id'] = semantic_end_id
@@ -104,7 +109,7 @@ def main():
         trainer = CustomT5Trainer(**trainer_args)
     else:
         trainer = Trainer(**trainer_args)
-
+    
     # === Train ===
     trainer.train()
 
@@ -120,4 +125,5 @@ def main():
 
 
 if __name__ == "__main__":
+    # torch.autograd.set_detect_anomaly(True)
     main()
