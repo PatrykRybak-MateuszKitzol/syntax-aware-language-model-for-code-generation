@@ -5,6 +5,9 @@ import torch.nn.utils as nn_utils
 from math import inf
 from transformers import T5ForConditionalGeneration, TrainerCallback, Trainer, LogitsProcessor
 from pathlib import Path
+from transformers.modeling_utils import PreTrainedModel
+from transformers import AutoConfig
+
 
 
 class T5WithModeLoss(T5ForConditionalGeneration):
@@ -13,20 +16,33 @@ class T5WithModeLoss(T5ForConditionalGeneration):
     """
     def __init__(self, config):
         super().__init__(config)
+        self.mode_classifier = nn.Linear(config.d_model, 1)
+        
+    @classmethod
+    def from_pretrained(cls, model_name_or_path, *args, **kwargs):
+        config = kwargs.get('config', None)
+        if config is None:
+            config = AutoConfig.from_pretrained(model_name_or_path)
 
+        model = super().from_pretrained(model_name_or_path, *args, config=config, **kwargs)
+
+        if not Path(model_name_or_path).exists():
+            print(">> Initializing mode_classifier manually (base model loaded)")
+            model._safe_init_mode_classifier()
+
+        return model
+
+    def _safe_init_mode_classifier(self):
         def safe_init_weights(layer):
             if isinstance(layer, nn.Linear):
                 nn.init.xavier_uniform_(layer.weight)
                 nn.init.zeros_(layer.bias)
-                if torch.isnan(layer.weight).any() or torch.isnan(layer.bias).any():
-                    print("!!! Reinitializing weights due to NaN...")
-                    layer.weight.data = torch.randn_like(layer.weight) * 0.02
-                    layer.bias.data.zero_()
+                # with torch.no_grad():
+                #     mask_zeros = layer.weight == 0.0
+                #     layer.weight[mask_zeros] = torch.empty_like(layer.weight[mask_zeros]).uniform_(-1e-2, 1e-2)
 
-        self.mode_classifier = nn.Linear(config.d_model, 1)
-        nn.init.xavier_uniform_(self.mode_classifier.weight)
-        nn.init.zeros_(self.mode_classifier.bias)
         self.mode_classifier.apply(safe_init_weights)
+
 
 
 class CustomT5Trainer(Trainer):
@@ -81,8 +97,15 @@ class CustomT5Trainer(Trainer):
         # Apply the mode mask to the mode_labels
         mode_mask = mode_labels * predicted_modes
         return mode_mask
-
+    
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        def temp():
+            for name, param in model.named_parameters():
+                if param.grad is not None:
+                    print(name, param.grad.abs().sum().item())
+                else:
+                    print(name, "NO GRAD")
+
         labels = inputs["labels"]
         decoder_input_ids = inputs.get("decoder_input_ids", None)
 
@@ -138,7 +161,7 @@ class CustomT5Trainer(Trainer):
 
 class GradClippingCallBack(TrainerCallback):
     def on_pre_optimizer_step(self, args, state, control, model=None, **kwargs):
-        # print(f"\n[{state.global_step}] --- Gradients BEFORE clipping ---")
+        print(f"\n[{state.global_step}] --- Gradients BEFORE clipping ---")
         # for name, param in model.named_parameters():
         #     if param.grad is not None:
         #         grad_norm = param.grad.data.norm(2).item()
@@ -146,8 +169,8 @@ class GradClippingCallBack(TrainerCallback):
         # CLIPPING
         max_norm = args.max_grad_norm if hasattr(args, "max_grad_norm") else 1.0
         total_norm = nn_utils.clip_grad_norm_(model.parameters(), max_norm)
-        # print(f"Total norm after clipping: {total_norm:.4f} (max allowed: {max_norm})")
-        # print(f"\n[{state.global_step}] --- Gradients AFTER clipping ---")
+        print(f"Total norm after clipping: {total_norm:.4f} (max allowed: {max_norm})")
+        print(f"\n[{state.global_step}] --- Gradients AFTER clipping ---")
         # for name, param in model.named_parameters():
         #     if param.grad is not None:
         #         grad_norm = param.grad.data.norm(2).item()
