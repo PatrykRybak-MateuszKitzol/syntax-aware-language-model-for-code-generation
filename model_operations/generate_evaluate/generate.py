@@ -1,9 +1,12 @@
+import json
 import sys
 import torch
 import os
 import gc
 
 from pathlib import Path
+
+from human_eval.data import HUMAN_EVAL
 from transformers import LogitsProcessorList, NoBadWordsLogitsProcessor
 
 root = Path(__file__).resolve().parent.parent.parent
@@ -23,7 +26,8 @@ from config import (
     TEST_SPLIT_DIR,
     FINETUNING,
     MODEL_NAME,
-    USE_CUSTOM_EOS
+    USE_CUSTOM_EOS,
+    HUMANEVAL
 )
 
 from model_operations.generate_evaluate.evaluation import evaluate_in_chunks
@@ -33,10 +37,11 @@ from model_operations.utils.gpu_logger import log_gpu
 from model_operations.utils.model_utils import load_model, load_tokenizer
 
 from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
-from data_processing.utils.data_loader import load_and_split_dataset
 from data_processing.utils.data_preparation import preprocess
+from data_processing.utils.humaneval_tests_preprocessing import load_humaneval_dataset
 from datasets import Dataset
 
+from human_eval.evaluation import evaluate_functional_correctness
 
 def main():
     # Setup
@@ -59,7 +64,10 @@ def main():
             model.resize_token_embeddings(len(tokenizer))
 
     # Load test dataset
-    raw_test_set = Dataset.load_from_disk(TEST_SPLIT_DIR).select(range(NUM_EXAMPLES_TO_GENERATE))
+    if HUMANEVAL:
+        raw_test_set = load_humaneval_dataset()
+    else:
+        raw_test_set = Dataset.load_from_disk(TEST_SPLIT_DIR).select(range(NUM_EXAMPLES_TO_GENERATE))
 
     # Preprocess test dataset
     tokenized_test_set = raw_test_set.map(
@@ -99,22 +107,40 @@ def main():
         logits_processor=logits_processor
     )
 
-    # === Compute real metrics ===
-    # Prepare predictions and references
-    predictions = [sample["prediction"] for sample in outputs]
-    references = [sample["reference"] for sample in outputs]
+    if HUMANEVAL:
+        humaneval_generations = {
+            str(i): [{
+                "task_id": f"HumanEval/{i}",
+                "completion": outputs[i]["prediction"],
+                "reference": outputs[i]["reference"],
+                "docstring": outputs[i]["input"]
+            }]
+            for i in range(len(outputs))
+        }
 
-    # compute_metrics expects the same structure as trainer.evaluate usually gives
-    # We'll adapt it manually
-    eval_pred = (predictions, references)
+        output_path = os.path.join(GENERATED_OUTPUTS_DIR, "humaneval_generations.jsonl")
+        with open(output_path, "w", encoding="utf-8") as f:
+            for task_id, samples in humaneval_generations.items():
+                for sample in samples:
+                    json_line = json.dumps(sample, ensure_ascii=False)
+                    f.write(json_line + "\n")
 
-    metrics = compute_metrics(eval_pred, tokenizer=None, pretokenizer=None)
+        pass_at_k = evaluate_functional_correctness(output_path)
 
-    # Save metrics to file
-    metrics_save_path = os.path.join(GENERATED_OUTPUTS_DIR, "generated_metrics.json")
-    save_metrics_to_file(metrics, metrics_save_path)
+        with open(os.path.join(GENERATED_OUTPUTS_DIR, "humaneval_pass@k.json"), "w") as f:
+            json.dump(pass_at_k, f, indent=2)
+    else:
+        predictions = [sample["prediction"] for sample in outputs]
+        references = [sample["reference"] for sample in outputs]
 
-    print(f"✅ Saved evaluation metrics to {metrics_save_path}")
+        eval_pred = (predictions, references)
+
+        metrics = compute_metrics(eval_pred, tokenizer=None, pretokenizer=None)
+
+        metrics_save_path = os.path.join(GENERATED_OUTPUTS_DIR, "generated_metrics.json")
+        save_metrics_to_file(metrics, metrics_save_path)
+
+        print(f"✅ Saved evaluation metrics to {metrics_save_path}")
 
     # Cleanup
     torch.cuda.empty_cache()
