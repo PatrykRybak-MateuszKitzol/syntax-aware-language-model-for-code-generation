@@ -3,10 +3,12 @@ import os
 import re
 
 from typing import List, Tuple, Optional
+from random import shuffle
 from core.segmentator import Segmentator, SegmentatorContract
 
 from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
 from data_processing.utils.pretty_printer import pretty_print_span, pretty_print_spans, pretty_print_tokens
+from datasets import Dataset
 
 class UltimateSegmentator(Segmentator):
 
@@ -221,7 +223,7 @@ class UltimateSegmentator(Segmentator):
                     spans.extend(self.extract_single_line_span(tokens, tag))
 
         delimiter_pairs = list(filter(lambda x: x[0] != "", [
-            (self.tags.DELIMIT_1_L, self,tags.DELIMIT_1_R),
+            (self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R),
             (self.tags.DELIMIT_2_L, self.tags.DELIMIT_2_R),
             (self.tags.DELIMIT_3_L, self.tags.DELIMIT_3_R)
         ]))
@@ -249,7 +251,92 @@ class UltimateSegmentator(Segmentator):
                     continue
                 filtered.append((start, end))
                 seen.add((start, end))
-            print("x")
             spans = filtered
 
         return spans
+
+
+
+    def select_mask_spans(self, spans, total_tokens, min_pct=0.20, max_pct=0.5, max_num_spans=3):
+        """
+        Selects non-overlapping spans from the given list of spans, ensuring that the 
+        total number of tokens in the selected spans falls within the specified range 
+        (defined by min_pct and max_pct of total_tokens). The selected spans are returned 
+        in sorted order.
+        Args:
+            spans (list of tuple): A list of spans, where each span is represented as a tuple (start, end).
+            total_tokens (int): The total number of tokens available.
+            min_pct (float, optional): The minimum percentage of total_tokens that the selected spans should cover. Defaults to 0.15.
+            max_pct (float, optional): The maximum percentage of total_tokens that the selected spans can cover. Defaults to 0.3.
+            max_num_spans (int, optional): The maximum number of spans to select. Defaults to 3.
+        Returns:
+            list of tuple: A sorted list of non-overlapping spans that meet the specified 
+            criteria. If no spans meet the criteria, the first span from the input list 
+            is returned.
+        """
+        def spans_overlap(a, b):
+            if a[0] == b[0] or a[1] == b[1]: return True
+
+            if a[0] > b[0]: first, second = b, a
+            else: first, second = a, b
+                
+            return not (first[1] < second[0])
+        # print('tuz przed sortem:', spans.__dict__)
+        spans = sorted(spans, key=lambda s: s[0])
+        shuffle(spans)
+
+        min_tokens = int(total_tokens * min_pct)
+        max_tokens = int(total_tokens * max_pct)
+
+        selected = []
+        token_count = 0
+
+        for span in spans:
+            start, end = span
+            span_len = end - start + 1
+
+            if token_count + span_len > max_tokens:
+                continue
+            if len(selected) >= max_num_spans:
+                break
+            if any(spans_overlap(span, s) for s in selected):
+                continue
+
+            selected.append(span)
+            token_count += span_len
+
+            if token_count >= min_tokens:
+                break
+
+        if not selected and spans:
+            selected = [spans[0]]
+
+        return sorted(selected, key=lambda s: s[0])
+
+    def apply(self, dataset, tokenizer, input_col = "docstring", label_col = "parsed"):
+        """
+        Applies the segmentator to the dataset.
+
+        Args:
+            dataset: The dataset (list) to be processed.
+
+        Returns:
+            A dataset with sampels changed
+        """
+        def map_fn(example):
+            tokens = self.tokenize_pretokenized_string(example[label_col])
+            spans = self.extract_protected_spans(tokens, all_options=True)
+            spans = self.select_mask_spans(spans, len(tokens))
+            additional_offset = 0 
+            example[label_col] = ""
+            for i in range(len(spans)):
+                example[input_col] += f"\n{"".join(tokens[:spans[i][0] + additional_offset] + \
+                                            [tokenizer.special_tokens_map['additional_special_tokens'][i]] + \
+                                            tokens[spans[i][1] + additional_offset:])}"
+
+                example[label_col] += "".join([tokenizer.special_tokens_map['additional_special_tokens'][i]] + tokens[spans[i][0]:spans[i][1] + 1])
+                tokens = tokens[:spans[i][0] + additional_offset]+ tokens[spans[i][1] + additional_offset:]
+
+                additional_offset -= spans[i][1] - spans[i][0] # end - start
+            return example
+        return list(map(map_fn, dataset))

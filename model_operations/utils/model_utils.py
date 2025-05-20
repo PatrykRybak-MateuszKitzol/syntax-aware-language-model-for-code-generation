@@ -11,9 +11,9 @@ sys.path.append(str(root))
 from data_processing.pretokenizers.firstpretokenizer import FirstPretokenizer
 from model_operations.training.training_additions import T5WithModeLoss
 from transformers import AutoModelForCausalLM
-from config import USE_CUSTOM_EOS, EOS
+from config import USE_CUSTOM_EOS, EOS, RUN_SEGEMENTATOR
 
-def load_tokenizer(model_path_or_name: str, use_custom_eos: bool = USE_CUSTOM_EOS, pretokenizer: Union[FirstPretokenizer, None] = None):
+def load_tokenizer(model_path_or_name: str, use_custom_eos: bool = USE_CUSTOM_EOS, pretokenizer: Union[FirstPretokenizer, None] = None, use_segmentator: bool = RUN_SEGEMENTATOR):
     """
     Load a tokenizer from a model name (e.g., "t5-base") or a directory path (e.g., "outputs/finetuned_model").
     """
@@ -40,6 +40,9 @@ def load_tokenizer(model_path_or_name: str, use_custom_eos: bool = USE_CUSTOM_EO
         code_token_ids.append(tokenizer.convert_tokens_to_ids("<pad>")) 
         if use_custom_eos:
             code_token_ids.append(tokenizer.convert_tokens_to_ids(EOS))
+        if use_segmentator: # should be used with t5 only
+            code_token_ids.extend(tokenizer.additional_special_tokens)
+
 
         return tokenizer, (semantic_start_id, semantic_end_id, code_token_ids, semantic_token_ids)
 

@@ -145,6 +145,21 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
             self.write(self.tags.NAMED_EXPR)
             self.traverse(node.value)
 
+    def visit_Import(self, node):
+        self.fill(self.tags.IMPORT)
+        self.interleave(lambda: self.write(self.tags.COMMA), self.traverse, node.names)
+
+    def visit_ImportFrom(self, node):
+        self.fill(self.tags.FROM_IMPORT)
+        self.write(self.tags.DOT * (node.level or 0))
+        if node.module:
+            if self._use_semantics:
+                self.write(self.tags.SEMANTIC_START + node.module + self.tags.SEMANTIC_END)
+            else:
+                self.write(node.module)
+        self.write(self.tags.IMPORT_FROM)
+        self.interleave(lambda: self.write(self.tags.COMMA), self.traverse, node.names)
+
     def visit_Assign(self, node):
         self.fill()
         for target in node.targets:
@@ -253,14 +268,17 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
         if node.type:
             self.traverse(node.type)
         if node.name:
-            self.write(self.tags.AS)
+            self.write(self.tags.AS_ITEM)
             self.write(node.name)
         with self.block():
             self.traverse(node.body)
 
     def visit_ClassDef(self, node):
         self.maybe_newline()
-        self.fill(self.tags.CLASS + node.name)
+        if self._use_semantics:
+            self.fill(self.tags.CLASS + self.tags.SEMANTIC_START + node.name + self.tags.SEMANTIC_END)
+        else:
+            self.fill(self.tags.CLASS + node.name)
         with self.delimit_if(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R, condition = node.bases or node.keywords):
             comma = False
             for e in node.bases:
@@ -287,7 +305,10 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
 
     def _function_helper(self, node, fill_suffix):
         self.maybe_newline()
-        def_str = fill_suffix + self.tags.SEMANTIC_START + node.name + self.tags.SEMANTIC_END
+        if self._use_semantics:
+            def_str = fill_suffix + self.tags.SEMANTIC_START + node.name + self.tags.SEMANTIC_END
+        else:
+            def_str = fill_suffix + node.name
         self.fill(def_str)
         with self.delimit(self.tags.DELIMIT_1_L, self.tags.DELIMIT_1_R):
             self.traverse(node.args)
@@ -685,7 +706,10 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
         self.set_precedence(_Precedence.ATOM, node.value)
         self.traverse(node.value)
         self.write(self.tags.DOT)
-        self.write(node.attr)
+        if self._use_semantics:
+            self.write(self.tags.SEMANTIC_START + node.attr + self.tags.SEMANTIC_END)
+        else:
+            self.write(node.attr)
 
     def visit_Call(self, node):
         self.set_precedence(_Precedence.ATOM, node.func)
@@ -800,6 +824,17 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
             self.write(self.tags.LAMBDA_BODDY)
             self.set_precedence(_Precedence.TEST, node.body)
             self.traverse(node.body)
+
+    def visit_alias(self, node):
+        if self._use_semantics:
+            self.write(self.tags.SEMANTIC_START + node.name + self.tags.SEMANTIC_END)
+        else:
+            self.write(node.name)
+        if node.asname:
+            if self._use_semantics:
+                self.write(self.tags.AS_ITEM + self.tags.SEMANTIC_START + node.asname + self.tags.SEMANTIC_END)
+            else:
+                self.write(self.tags.AS_ITEM + node.asname)
 
     def visit_withitem(self, node):
         self.traverse(node.context_expr)
@@ -946,7 +981,6 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
             YIELD_FROM= "[YIELD_FROM]"
 
             FROM= "[FROM]"
-            AS= "[AS]"
 
             BLOCK= "[BLOCK]"
 
@@ -1058,6 +1092,10 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
             INF= "[INF]"
             NAN= "[NAN]"
 
+            IMPORT= "[IMPORT]"
+            IMPORT_FROM= "[IMPORT_FROM]"
+            FROM_IMPORT= "[FROM_IMPORT]"
+
             SEMANTIC_START= "[SEMANTIC_START]"
             SEMANTIC_END= "[SEMANTIC_END]"
 
@@ -1101,7 +1139,6 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
             Tags.YIELD_FROM: "yield from ",
 
             Tags.FROM: " from ",
-            Tags.AS: " as ",
 
             Tags.BLOCK: ":",
 
@@ -1212,6 +1249,10 @@ class FirstPretokenizer(NodeVisitor, Pretoknizer, SegmentatorContract):
 
             Tags.INF: "inf",
             Tags.NAN: "nan",
+
+            Tags.IMPORT: "import ",
+            Tags.IMPORT_FROM: " import ",
+            Tags.FROM_IMPORT: "from ",
 
             Tags.SEMANTIC_START: "",
             Tags.SEMANTIC_END: "",
