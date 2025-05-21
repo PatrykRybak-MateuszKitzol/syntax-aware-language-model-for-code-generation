@@ -7,11 +7,10 @@ from pathlib import Path
 root = Path(__file__).resolve().parent
 sys.path.append(str(root))
 
-from config import GENERATED_OUTPUTS_DIR
+from config import PREDICTIONS_FILE, METRICS_FILE
 
 # === Paths to load (dynamic based on experiment) ===
-PREDICTIONS_FILE = os.path.join(GENERATED_OUTPUTS_DIR, "generated_outputs.json")
-METRICS_FILE = os.path.join(GENERATED_OUTPUTS_DIR, "generated_metrics.json")
+
 
 def load_json(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
@@ -60,8 +59,6 @@ if __name__ == "__main__":
         metrics = load_json(METRICS_FILE)
 
     predictions = load_json(PREDICTIONS_FILE)
-
-    print(PREDICTIONS_FILE)
 
     # Display results
     if metrics:

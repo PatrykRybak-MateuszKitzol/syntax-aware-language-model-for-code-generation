@@ -67,6 +67,7 @@ def evaluate_in_chunks(
                 "input": inputs[i],
                 "reference": pretokenizer.reverse(references[i]) if pretokenizer else references[i],
                 "prediction": pretokenizer.reverse(decoded_preds[i]) if pretokenizer else decoded_preds[i],
+                "raw_prediction": decoded_preds[i],
                 "outputs": tokenizer.encode(decoded_preds[i], add_special_tokens=False)
             })
 

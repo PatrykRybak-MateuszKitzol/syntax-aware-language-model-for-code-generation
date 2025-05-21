@@ -107,6 +107,19 @@ def main():
         logits_processor=logits_processor
     )
 
+    predictions = [sample["prediction"] for sample in outputs]
+    references = [sample["reference"] for sample in outputs]
+
+    eval_pred = (predictions, references)
+
+    metrics = compute_metrics(eval_pred, tokenizer=None, pretokenizer=None)
+
+    metrics_save_path = os.path.join(GENERATED_OUTPUTS_DIR, f"{'humaneval_' if HUMANEVAL else ''}generated_metrics.json")
+
+    save_metrics_to_file(metrics, metrics_save_path)
+
+    print(f"✅ Saved evaluation metrics to {metrics_save_path}")
+
     if HUMANEVAL:
         humaneval_generations = {
             str(i): [{
@@ -129,18 +142,7 @@ def main():
 
         with open(os.path.join(GENERATED_OUTPUTS_DIR, "humaneval_pass@k.json"), "w") as f:
             json.dump(pass_at_k, f, indent=2)
-    else:
-        predictions = [sample["prediction"] for sample in outputs]
-        references = [sample["reference"] for sample in outputs]
 
-        eval_pred = (predictions, references)
-
-        metrics = compute_metrics(eval_pred, tokenizer=None, pretokenizer=None)
-
-        metrics_save_path = os.path.join(GENERATED_OUTPUTS_DIR, "generated_metrics.json")
-        save_metrics_to_file(metrics, metrics_save_path)
-
-        print(f"✅ Saved evaluation metrics to {metrics_save_path}")
 
     # Cleanup
     torch.cuda.empty_cache()
