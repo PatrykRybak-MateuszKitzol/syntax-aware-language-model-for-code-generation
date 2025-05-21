@@ -134,6 +134,7 @@ class UltimateSegmentator(Segmentator):
             delimiters: bool = False,
             lines: bool = False,
             indented_blocks: bool = False,
+            semantic: bool = False,
             all_options: bool = False,
             strict: bool = False
     ) -> List[Tuple[int, int]]:
@@ -149,6 +150,7 @@ class UltimateSegmentator(Segmentator):
             lines (bool): If True, extract line-based spans from [NEW_LINE], [INDENT], or [DEDENT] markers.
             indented_blocks (bool): If True, extract indented code blocks delimited by [INDENT] and [DEDENT].
             all_options (bool): If True, enables all other flags (control_tags, inline_tags, delimiters, lines, indented_blocks).
+            semantic (bool): If True, extract spans enclosed by [SEMANTIC_START] and [SEMANTIC_END] tags.
             strict (bool): If False (default), filters out spans that are nearly duplicates of others, such as spans that start or end one token apart. (control_tags, inline_tags, delimiters, lines, indented_blocks).
 
         Returns:
@@ -235,6 +237,9 @@ class UltimateSegmentator(Segmentator):
             for left, right in delimiter_pairs:
                 if left in tags or right in tags:
                     spans.extend(self.extract_delimited_spans(tokens, left, right))
+
+        if semantic or self.tags.SEMANTIC_START in tags or self.tags.SEMANTIC_END in tags:
+            spans.extend(self.extract_delimited_spans(tokens, self.tags.SEMANTIC_START, self.tags.SEMANTIC_END))
 
         spans = sorted(set(spans))
 
