@@ -343,5 +343,7 @@ class UltimateSegmentator(Segmentator):
                 tokens = tokens[:spans[i][0] + additional_offset]+ tokens[spans[i][1] + additional_offset:]
 
                 additional_offset -= spans[i][1] - spans[i][0] # end - start
+
+            example[label_col] += tokenizer.special_tokens_map['additional_special_tokens'][len(spans)]
             return example
         return list(map(map_fn, dataset))
