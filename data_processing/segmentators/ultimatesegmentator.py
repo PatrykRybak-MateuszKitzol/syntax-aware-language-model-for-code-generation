@@ -334,16 +334,18 @@ class UltimateSegmentator(Segmentator):
             spans = self.select_mask_spans(spans, len(tokens))
             additional_offset = 0 
             example[label_col] = ""
+            example[input_col] += "\n"
+            res_tokens = [t for t in tokens]
             for i in range(len(spans)):
-                example[input_col] += f"\n{"".join(tokens[:spans[i][0] + additional_offset] + \
+                res_tokens = res_tokens[:spans[i][0] + additional_offset] + \
                                             [tokenizer.special_tokens_map['additional_special_tokens'][i]] + \
-                                            tokens[spans[i][1] + additional_offset:])}"
+                                            res_tokens[spans[i][1] + 1 + additional_offset:]
 
                 example[label_col] += "".join([tokenizer.special_tokens_map['additional_special_tokens'][i]] + tokens[spans[i][0]:spans[i][1] + 1])
-                tokens = tokens[:spans[i][0] + additional_offset]+ tokens[spans[i][1] + additional_offset:]
 
                 additional_offset -= spans[i][1] - spans[i][0] # end - start
 
+            example[input_col] += "".join(res_tokens)
             example[label_col] += tokenizer.special_tokens_map['additional_special_tokens'][len(spans)]
             return example
         return list(map(map_fn, dataset))
