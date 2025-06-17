@@ -1,9 +1,4 @@
-"""
-
-"""
-
 from core.pretokenizer import Pretoknizer
-
 
 class SegmentatorContract:
     """

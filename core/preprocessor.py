@@ -1,7 +1,3 @@
-"""
-
-"""
-
 from abc import abstractmethod
 
 class BasePreprocessor:
